@@ -53,7 +53,7 @@ yourself on its behalf.
 
 ### 4. Commit and push
 
-Use the `commit` skill to stage and create the commit.
+Create the commit.
 
 `git commit` and `git push` are not in this repository's permission allow-list, so
 attempting them will pause for approval — that pause is the approval gate, forwarded to
