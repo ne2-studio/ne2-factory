@@ -1,0 +1,22 @@
+# Testability and delivery smells
+
+| id | Smell | Description | Attributes in tension | Candidate movements | Common false positive |
+|---|---|---|---|---|---|
+| `untestable-core` | Untestable core | The behaviour that matters is entangled with the clock, network, persistence, filesystem, or global state. | implementation convenience vs. `testability`, determinism | Functional core / imperative shell; ports; dependency injection; value objects; a controllable clock | A decision that's genuinely inseparable from its effect (e.g. "increment this counter in the database") |
+| `test-pyramid-inversion` | Test pyramid inversion | Most rules can only be verified through slow, brittle end-to-end tests. | fidelity vs. speed, isolation, diagnostic quality | Descend the rules; extract a cohesive unit; component tests; keep few end-to-end tests for wiring only | A thin system where almost everything genuinely *is* wiring, with little combinatorial logic to descend |
+| `mock-architecture` | Mock architecture | Tests need large mock graphs and assert on internal interactions rather than outcomes. | isolation vs. `robustness` under refactoring, fidelity | Sociable tests; fakes; coarser ports; component tests; reduce the coupling being mocked | A genuine contract test asserting that a specific call was made, where the call itself is the contract |
+| `environment-coupled-verification` | Environment-coupled verification | Verifying one change requires standing up nearly the whole system or shared infrastructure. | fidelity vs. `independent-delivery`, speed | Test harness; scoped containers; runnable modules; contracts; reproducible environments | A true end-to-end smoke test, deliberately scoped to run rarely and verify wiring, not logic |
+| `build-blast-radius` | Build blast radius | A small change forces recompiling, retesting, or redeploying a large part of the system. | global integration vs. `independent-delivery` | Real modularisation; selective pipelines; dependency graph awareness; versioned artifacts | A genuinely shared low-level library where a change really should ripple everywhere |
+| `layer-by-layer-delivery` | Layer-by-layer delivery | Features are built and shipped horizontally — backend, then frontend, then infrastructure, then tests — instead of end to end. | technical specialisation vs. feedback speed, vertical `independent-delivery` | Vertical slices; contract-first minimum; thin walking skeleton | A change that's genuinely confined to one layer (e.g. a pure backend performance fix) |
+| `insufficient-behavioural-coverage` | Insufficient behavioural coverage | An important public capability has no black-box protection at all — not inverted, just missing. | `robustness` vs. delivery speed today | Add acceptance coverage at the right boundary; characterise the current behaviour first | Trivial getters, framework wiring, or generated code with nothing to characterise |
+| `test-fidelity-mismatch` | Test fidelity mismatch | A fake, in-memory double, or mock stands in for infrastructure whose real semantics (concurrency, transactions, constraints, collation, serialization, precision) matter to correctness, and production has already diverged from what the fake models. | `testability`, speed vs. `robustness`, fidelity | Use a real ephemeral dependency; keep the fake only for orchestration tests it's still valid for | Deterministic, low-semantic fakes such as a clock, an id generator, or an in-memory queue with no ordering guarantees to violate |
+
+## Notes
+
+### `test-fidelity-mismatch`
+
+The direction of this tension can run either way — a fake can be too *unfaithful* (hiding a real production failure mode) or the verification strategy can be too *faithful* (paying full environment cost for a decision that never needed it — see `environment-coupled-verification`). Diagnose which side of the tension the evidence actually shows before recommending a movement; they call for opposite fixes.
+
+### Retired: test descent as a smell
+
+An earlier version of this catalogue had "test descent opportunity" as its own smell. It's a movement, not a smell: it's one of the candidate movements for `test-pyramid-inversion` and `untestable-core`, not an independent pressure. A valid descent initiative must still name the decision being extracted, the cases moving down, and the black-box paths staying at the public boundary — see `SKILL.md`'s "Preserve the outer safety net" principle.
