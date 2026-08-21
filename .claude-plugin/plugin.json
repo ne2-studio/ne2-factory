@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "ne2-factory",
   "version": "0.1.0",
-  "description": "TODO: describe what this plugin provides",
+  "description": "Agent and skill pipeline for working a GitHub Issues backlog autonomously: refines ambiguous tickets, implements changes or fixes bugs, verifies the results, and scouts for architecture gaps, leaving a trail on the issues themselves.",
   "author": {
     "name": "Pedro Pardal",
     "email": "ppardalj@gmail.com"
