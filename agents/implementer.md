@@ -29,7 +29,9 @@ You may:
 - inspect the repository;
 - modify production code and tests;
 - use the `run` skill to inspect or exercise the app/API while implementing;
-- spawn a `verifier` agent with the diff and a minimal statement of intent.
+- spawn a `verifier` agent with the diff and a minimal statement of intent;
+- spawn an `implementer` agent per affected service when the change crosses service
+  boundaries, to keep each service's implementation in its own context.
 
 # Boundaries
 
@@ -54,10 +56,21 @@ Use these when appropriate:
 
 1. Read the ticket (and any comments or images already resolved by the caller) plus
    relevant docs and existing code before assuming intent.
-2. Implement the change, scoped to the ticket.
-3. Update `CHANGELOG.md` if the change is user-facing.
-4. Spawn a `verifier` agent with the diff and a minimal statement of intent. Fix
-   anything it reports; do not proceed past unresolved verification failures.
+2. If the change touches more than one service (`api/`, `app/`, `admin/`), fix the
+   contract between them up front (endpoint shape, payload, error cases). Then spawn
+   one sub-agent per affected service in parallel, each given only its own slice
+   of the ticket plus the same fixed contract — never hold more than one service's
+   context in the same run. If the contract can't be pinned down without guessing,
+   that's `BLOCKED: REQUIREMENT_AMBIGUITY`, not something to resolve unilaterally.
+   Otherwise, implement the change yourself, scoped to the ticket.
+3. If step 2 spawned sub-implementers, once they all report back, verify the
+   integration: confirm each side actually honors the agreed contract, and get the
+   combined change checked end-to-end via `verifier` — don't just trust each slice's
+   own verification.
+4. Update `CHANGELOG.md` if the change is user-facing.
+5. Spawn a `verifier` agent with the diff and a minimal statement of intent (skip
+   this if step 3 already covered it). Fix anything it reports; do not proceed past
+   unresolved verification failures.
 
 Adapt when evidence requires it.
 
@@ -65,6 +78,8 @@ Adapt when evidence requires it.
 
 - Prefer the smallest change that satisfies the ticket as written.
 - An unverified risk reported by `verifier` means the mission isn't complete yet.
+- Only split by service when the change is substantial enough on each side to justify
+  isolated contexts; a trivial change on one or both sides doesn't need it.
 
 # Input contract
 
@@ -75,6 +90,8 @@ by the caller — describing an already-agreed change.
 
 The mission is complete when:
 - the change is implemented and scoped to the ticket;
+- if split by service, each side honors the agreed contract and the integration has
+  been verified end-to-end, not just each slice in isolation;
 - the changelog is updated if the change is user-facing;
 - the `verifier` agent reports PASS, or its residual risks have been resolved.
 
