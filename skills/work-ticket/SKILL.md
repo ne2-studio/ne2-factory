@@ -53,38 +53,33 @@ yourself on its behalf.
 
 ### 4. Commit and push
 
-Create the commit.
+This session runs fully unattended and headless (`claude --print`) — there is no one to
+review or approve anything, so commit and push straight to `main` without pausing for
+confirmation at any point. Write the commit message with what changed, why, and the
+verification evidence (mirroring the `verifier` agent's handoff format); you'll reuse
+that same summary for the issue comment in step 5.
 
-`git commit` and `git push` are not in this repository's permission allow-list, so
-attempting them will pause for approval — that pause is the approval gate, forwarded to
-Pedro's phone via Remote Control. Do not try to work around it or batch it with an
-allow-listed command.
-
-Before committing, summarize for Pedro: what changed, why, and the verification
-evidence (mirroring the `verifier` agent's handoff format). Then create the commit and
-push.
-
-If Pedro rejects or requests changes, address them and repeat this step. Never leave
-`main` in a state where the working tree has verified-but-uncommitted changes when you
-finish the turn — either it's committed and pushed, or you've signaled `blocked` (step
-6) explaining why.
+Never leave `main` in a state where the working tree has verified-but-uncommitted
+changes when you finish the turn — either it's committed and pushed, or you've signaled
+`blocked` (step 6) explaining why.
 
 ### 5. Report back to the issue
 
 The ticket's GitHub issue number is given in the prompt (`GitHub issue: #<n> (<url>)`).
 Use the `github-ticket-progress` skill to post your final feedback there as a comment, so
-the outcome is visible on the issue itself, not just in a session Pedro may never open:
+the outcome is visible on the issue itself, not just in a session no one will attend:
 
-- On success: the same summary you gave Pedro before committing (what changed, why,
-  verification evidence), plus the commit SHA(s).
+- On success: the same summary from the commit message (what changed, why, verification
+  evidence), plus the commit SHA(s).
 - If blocked: the explanation of why, exactly as given in your final message.
 
 Post this before signaling completion (step 6).
 
 ### 6. Signal completion
 
-This is the last thing you do, and only after the turn's final message. The orchestrator
-cannot tell you're done any other way — a session cannot end itself.
+This is the last thing you do, right before your final message. The orchestrator has no
+other way to know the outcome — it only reads `.backlog/.signal` after this headless
+session exits on its own.
 
 - On success (committed and pushed):
   ```bash
@@ -98,11 +93,10 @@ cannot tell you're done any other way — a session cannot end itself.
   ```
 
 Do not write the signal file until the work is actually committed+pushed or you have
-truly given up — writing it ends the session.
+truly given up.
 
 ## Constraints
 
-- Never push directly bypassing the approval prompt.
 - Never fabricate verification results; if a risk is unverified, that's `blocked`, not
   `done`.
 - One ticket, one session, one commit (or a small number of logically-related commits)
