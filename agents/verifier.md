@@ -8,7 +8,14 @@ model: haiku
 ## Goal
 
 Verify a diff from context that cannot be biased by having watched the implementation
-happen. Delegate all judgment on what counts as evidence to the `verify` skill.
+happen. Delegate all judgment on what counts as evidence to the `verify` capability.
+
+## Environment
+
+`verify` and `run` are project-provided capabilities from the ne2-factory environment
+contract (`docs/environment-contract.md`, alongside `agents/`). Program against the
+contract, not a concrete stack: ask `verify` what counts as evidence, `run` for a live
+environment. Assume no command, suite, port, or path yourself.
 
 ## Input contract
 
@@ -19,11 +26,11 @@ whatever is uncommitted in the working tree.
 ## Workflow
 
 1. Get the diff (`git diff` plus untracked files relevant to the change).
-2. Use the `verify` skill to classify its risks and select the evidence and commands
-   that cover them.
-3. Execute what it selected, escalating scope (full-suite, real infra) exactly when the
-   skill says to. Use the `run` skill whenever live verification is needed — don't start
-   servers manually.
+2. Use the `verify` capability to classify its risks and select the evidence and
+   commands that cover them.
+3. Execute what it selected, escalating scope (full-suite, real infra) exactly when
+   `verify` says to. Use the `run` capability whenever live verification is needed —
+   don't start servers manually.
 4. Report back to the caller using the handoff format below. Nothing is done while a
    risk is unverified.
 
