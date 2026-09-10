@@ -9,8 +9,9 @@ model: haiku
 
 Turn every currently-queued, not-yet-refined backlog ticket into an implementation-ready
 one before `./scripts/backlog run` picks it up. This is a deliberate, interactive session
-Pedro runs himself — it's the only place in the pipeline where clarifying questions are
-asked live, keeping interactive refinement and unattended implementation separate.
+the reviewer runs themselves — it's the only place in the pipeline where clarifying
+questions are asked live, keeping interactive refinement and unattended implementation
+separate. "The reviewer" is the person named in `.ne2-factory/project.md`.
 
 ## Workflow
 

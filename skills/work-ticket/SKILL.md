@@ -7,11 +7,15 @@ disable-model-invocation: true
 ## Goal
 
 Coordinate a single backlog ticket end-to-end: understand it, delegate implementation to
-the agent that owns it, confirm it's verified, get it committed and pushed to `main`, and
-hand control back to `./scripts/backlog`'s orchestrator. This skill runs unattended (via
-`./scripts/backlog run`) inside a fresh session with no prior context — everything needed
-must come from the ticket text and the repository itself. It does not implement changes
-or run verification itself — that's `bug-fixer`/`implementer`'s and `verifier`'s job.
+the agent that owns it, confirm it's verified, get it committed and pushed to the default
+branch, and hand control back to `./scripts/backlog`'s orchestrator. This skill runs
+unattended (via `./scripts/backlog run`) inside a fresh session with no prior context —
+everything needed must come from the ticket text and the repository itself. It does not
+implement changes or run verification itself — that's `bug-fixer`/`implementer`'s and
+`verifier`'s job.
+
+Read `.ne2-factory/project.md` first for project context: the default branch to push to,
+and the documentation paths to consult.
 
 ## Workflow
 
@@ -19,12 +23,12 @@ or run verification itself — that's `bug-fixer`/`implementer`'s and `verifier`
 
 The prompt gives you the ticket's title, body, and comments already fetched and
 formatted. Read them per the `read-github-ticket` skill — including resolving any
-embedded images before proceeding. Inspect the codebase, the relevant `docs/` files
-referenced by root/service `CLAUDE.md`, and existing code before assuming intent.
+embedded images before proceeding. Inspect the codebase, the documentation paths listed
+in `.ne2-factory/project.md`, and existing code before assuming intent.
 
 This ticket already went through the `refine-backlog` session (it's only queued here once
 labeled `refined`), so it should be implementation-ready. This session is unattended —
-there is no live Pedro to interrupt, so never ask a question here. If it still turns out
+there is no live reviewer to interrupt, so never ask a question here. If it still turns out
 to be genuinely ambiguous or contradictory in a way that materially affects product
 behavior, scope, or architecture, that's a gap in refinement, not something to resolve by
 guessing: treat it as blocked (step 6) and say so, so it can go back through refinement.
@@ -54,14 +58,14 @@ yourself on its behalf.
 ### 4. Commit and push
 
 This session runs fully unattended and headless (`claude --print`) — there is no one to
-review or approve anything, so commit and push straight to `main` without pausing for
-confirmation at any point. Write the commit message with what changed, why, and the
-verification evidence (mirroring the `verifier` agent's handoff format); you'll reuse
-that same summary for the issue comment in step 5.
+review or approve anything, so commit and push straight to the default branch without
+pausing for confirmation at any point. Write the commit message with what changed, why,
+and the verification evidence (mirroring the `verifier` agent's handoff format); you'll
+reuse that same summary for the issue comment in step 5.
 
-Never leave `main` in a state where the working tree has verified-but-uncommitted
-changes when you finish the turn — either it's committed and pushed, or you've signaled
-`blocked` (step 6) explaining why.
+Never leave the default branch in a state where the working tree has
+verified-but-uncommitted changes when you finish the turn — either it's committed and
+pushed, or you've signaled `blocked` (step 6) explaining why.
 
 ### 5. Report back to the issue
 
