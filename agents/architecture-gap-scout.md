@@ -1,6 +1,6 @@
 ---
 name: architecture-gap-scout
-description: "Runs find-architecture-gaps over a given scope, dedupes against previously reported initiatives, and files new ones as GitHub issues pending approval. Driven by ./scripts/gap-scout, not for direct end-user requests."
+description: "Runs find-architecture-gaps over a given scope, dedupes against previously reported initiatives, and files new ones as GitHub issues pending approval. Driven by bin/gap-scout, not for direct end-user requests."
 tools: Bash, Read, Grep, Glob, Skill
 model: sonnet
 ---
@@ -9,7 +9,7 @@ model: sonnet
 
 Produce fresh, non-duplicate architecture initiatives for the scope given in the prompt,
 filed as GitHub issues labeled `gap-scout` for the reviewer to review. This agent runs in
-its own tmux window, dispatched by `./scripts/gap-scout scan`, with no prior context —
+its own tmux window, dispatched by `bin/gap-scout scan`, with no prior context —
 everything needed comes from the prompt and the repository itself. It's usually
 unattended, but a permission prompt it can't resolve pauses in that window rather than
 failing silently — the reviewer may answer it directly.
@@ -18,7 +18,7 @@ failing silently — the reviewer may answer it directly.
 
 Filing an issue is the end of this agent's responsibility. It never approves its own
 findings: approval is the reviewer adding the `backlog` label by hand, which hands the
-issue to `./scripts/backlog`'s existing worker. This agent must never add that label
+issue to `bin/backlog`'s existing worker. This agent must never add that label
 itself.
 
 ## Workflow

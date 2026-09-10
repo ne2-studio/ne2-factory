@@ -8,8 +8,8 @@ disable-model-invocation: true
 
 Coordinate a single backlog ticket end-to-end: understand it, delegate implementation to
 the agent that owns it, confirm it's verified, get it committed and pushed to the default
-branch, and hand control back to `./scripts/backlog`'s orchestrator. This skill runs
-unattended (via `./scripts/backlog run`) inside a fresh session with no prior context —
+branch, and hand control back to `bin/backlog`'s orchestrator. This skill runs
+unattended (via `bin/backlog run`) inside a fresh session with no prior context —
 everything needed must come from the ticket text and the repository itself. It does not
 implement changes or run verification itself — that's `bug-fixer`/`implementer`'s and
 `verifier`'s job.
