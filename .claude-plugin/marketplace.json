@@ -1,5 +1,6 @@
 {
   "name": "ne2",
+  "description": "Ne2 Studio's Claude Code plugins.",
   "owner": {
     "name": "Ne2 Studio"
   },
