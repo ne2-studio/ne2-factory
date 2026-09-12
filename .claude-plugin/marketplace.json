@@ -1,0 +1,13 @@
+{
+  "name": "ne2",
+  "owner": {
+    "name": "Ne2 Studio"
+  },
+  "plugins": [
+    {
+      "name": "ne2-factory",
+      "source": "./",
+      "description": "Agentic software factory for Claude Code"
+    }
+  ]
+}
