@@ -8,7 +8,7 @@ internal sealed class BacklogCommand(
     IBacklog backlog,
     IProcessRunner proc,
     IAgent agent,
-    ProjectContext ctx,
+    IAgentSignalChannel signal,
     ILogger<BacklogCommand> logger)
 {
     public const string QueueLabel = GithubIssuesBacklog.QueueLabel;
@@ -146,7 +146,7 @@ internal sealed class BacklogCommand(
             logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", n);
             proc.RunInherited("git", ["pull", "--ff-only"]);
 
-            if (File.Exists(ctx.SignalFile)) File.Delete(ctx.SignalFile);
+            signal.Reset();
 
             seen++;
             logger.LogInformation("Ticket: #{Number} {Title}", n, current.Title);
@@ -154,32 +154,26 @@ internal sealed class BacklogCommand(
 
             agent.Run(BuildWorkTicketPrompt(current), new AgentOptions { SkipPermissions = true });
 
-            if (File.Exists(ctx.SignalFile))
-            {
-                var lines = File.ReadAllLines(ctx.SignalFile);
-                var status = lines.FirstOrDefault(l => l.StartsWith("status="))?["status=".Length..];
-                var reason = lines.FirstOrDefault(l => l.StartsWith("reason="))?["reason=".Length..];
-
-                switch (status)
-                {
-                    case "done":
-                        backlog.Close(n);
-                        logger.LogInformation("-> hecho: #{Number}", n);
-                        break;
-                    case "blocked":
-                        backlog.MarkFailed(n);
-                        logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", n, string.IsNullOrEmpty(reason) ? "" : $" ({reason})", n);
-                        break;
-                    default:
-                        logger.LogWarning("-> señal desconocida ('{Status}'), dejo #{Number} en cola para revisión manual.", status, n);
-                        return false;
-                }
-                File.Delete(ctx.SignalFile);
-            }
-            else
+            var outcome = signal.Read();
+            if (outcome is null)
             {
                 logger.LogWarning("-> la sesión terminó sin señal (salida manual/crash). Dejo #{Number} en cola y paro.", n);
                 return false;
+            }
+
+            switch (outcome.Status)
+            {
+                case "done":
+                    backlog.Close(n);
+                    logger.LogInformation("-> hecho: #{Number}", n);
+                    break;
+                case "blocked":
+                    backlog.MarkFailed(n);
+                    logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", n, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", n);
+                    break;
+                default:
+                    logger.LogWarning("-> señal desconocida ('{Status}'), dejo #{Number} en cola para revisión manual.", outcome.Status, n);
+                    return false;
             }
         }
 

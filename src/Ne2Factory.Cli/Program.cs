@@ -35,6 +35,7 @@ builder.Services.AddSingleton(new RootDirectory(rootDir));
 builder.Services.AddSingleton<ProjectContext>();
 builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
 builder.Services.AddSingleton<IAgent, ClaudeAgent>();
+builder.Services.AddSingleton<IAgentSignalChannel, FileAgentSignalChannel>();
 builder.Services.AddSingleton<IGitHubCli, GitHubCli>();
 builder.Services.AddSingleton<IBacklog, GithubIssuesBacklog>();
 builder.Services.AddSingleton<BacklogCommand>();
