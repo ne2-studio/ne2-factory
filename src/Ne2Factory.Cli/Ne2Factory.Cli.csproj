@@ -9,7 +9,11 @@
 
   <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.25" />
+    <PackageReference Include="Hangfire.NetCore" Version="1.8.25" />
     <PackageReference Include="Hangfire.Storage.SQLite" Version="0.4.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
   </ItemGroup>
 
 </Project>

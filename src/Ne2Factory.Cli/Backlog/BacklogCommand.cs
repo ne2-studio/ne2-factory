@@ -1,13 +1,17 @@
-using System.Text.Json;
-using Hangfire;
+using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.Backlog;
 
-internal static class BacklogCommand
+internal sealed class BacklogCommand(
+    IGitHubCli gitHubCli,
+    IProcessRunner proc,
+    ProjectContext ctx,
+    ILogger<BacklogCommand> logger)
 {
-    private const string QueueLabel = "backlog";
-    private const string RefinedLabel = "refined";
-    private const string FailedLabel = "backlog:failed";
+    public const string QueueLabel = "backlog";
+    public const string RefinedLabel = "refined";
+    public const string FailedLabel = "backlog:failed";
 
     private const string Usage = """
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
@@ -52,7 +56,7 @@ internal static class BacklogCommand
         approval step. Requires `gh` authenticated against this repo.
         """;
 
-    public static int Run(string[] args, ProjectContext ctx)
+    public int Run(string[] args)
     {
         var command = args.Length > 0 ? args[0] : "";
         var rest = args.Skip(1).ToArray();
@@ -60,112 +64,93 @@ internal static class BacklogCommand
         {
             case "list": CmdList(); return 0;
             case "requeue": return CmdRequeue(rest);
-            case "run": return CmdRun(rest, ctx);
-            case "-h": case "--help": case "": Console.WriteLine(Usage); return 0;
+            case "run":
+                // Valid usage (`run --yolo`) is intercepted in Program.cs, which starts
+                // the host instead of calling this method — only invalid usage lands here.
+                logger.LogError("Uso: ne2-factory backlog run --yolo");
+                logger.LogInformation("{Text}", Usage);
+                return 1;
+            case "-h": case "--help": case "": logger.LogInformation("{Text}", Usage); return 0;
             default:
-                Console.Error.WriteLine($"Comando desconocido: {command}");
-                Console.WriteLine(Usage);
+                logger.LogError("Comando desconocido: {Command}", command);
+                logger.LogInformation("{Text}", Usage);
                 return 1;
         }
     }
 
-    private static void EnsureLabels()
+    public void EnsureLabels()
     {
-        GitHubCli.CreateLabelSilently(QueueLabel, "0E8A16", "Backlog ticket queued for bin/backlog");
-        GitHubCli.CreateLabelSilently(RefinedLabel, "0E8A16", "Ticket refinado, listo para bin/backlog");
-        GitHubCli.CreateLabelSilently(FailedLabel, "B60205", "Backlog ticket blocked, needs review before requeuing");
+        gitHubCli.CreateLabelSilently(QueueLabel, "0E8A16", "Backlog ticket queued for bin/backlog");
+        gitHubCli.CreateLabelSilently(RefinedLabel, "0E8A16", "Ticket refinado, listo para bin/backlog");
+        gitHubCli.CreateLabelSilently(FailedLabel, "B60205", "Backlog ticket blocked, needs review before requeuing");
     }
 
-    private static void CmdList()
+    private void CmdList()
     {
-        Console.WriteLine("En cola, sin refinar:");
-        foreach (var issue in GitHubCli.ListIssues([QueueLabel], "open", "number,title,labels"))
+        logger.LogInformation("En cola, sin refinar:");
+        foreach (var issue in gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels"))
         {
             if (issue.Labels?.Any(l => l.Name == RefinedLabel) != true)
-                Console.WriteLine($"  #{issue.Number}  {issue.Title}");
+                logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
         }
 
-        Console.WriteLine("En cola, lista para implementar:");
-        foreach (var issue in GitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number,title"))
-            Console.WriteLine($"  #{issue.Number}  {issue.Title}");
+        logger.LogInformation("En cola, lista para implementar:");
+        foreach (var issue in gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number,title"))
+            logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
 
-        Console.WriteLine("Hechos:");
-        foreach (var issue in GitHubCli.ListIssues([QueueLabel], "closed", "number,title"))
-            Console.WriteLine($"  #{issue.Number}  {issue.Title}");
+        logger.LogInformation("Hechos:");
+        foreach (var issue in gitHubCli.ListIssues([QueueLabel], "closed", "number,title"))
+            logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
 
-        Console.WriteLine("Fallidos/bloqueados:");
-        foreach (var issue in GitHubCli.ListIssues([FailedLabel], "open", "number,title"))
-            Console.WriteLine($"  #{issue.Number}  {issue.Title}");
+        logger.LogInformation("Fallidos/bloqueados:");
+        foreach (var issue in gitHubCli.ListIssues([FailedLabel], "open", "number,title"))
+            logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
     }
 
-    private static int CmdRequeue(string[] args)
+    private int CmdRequeue(string[] args)
     {
         var n = args.Length > 0 ? args[0] : "";
         if (!int.TryParse(n, out var number))
         {
-            Console.Error.WriteLine("Uso: ne2-factory backlog requeue <número-de-issue>");
+            logger.LogError("Uso: ne2-factory backlog requeue <número-de-issue>");
             return 1;
         }
-        GitHubCli.EditIssueLabels(number, FailedLabel, QueueLabel);
-        Console.WriteLine($"Reencolado: #{number}");
+        gitHubCli.EditIssueLabels(number, FailedLabel, QueueLabel);
+        logger.LogInformation("Reencolado: #{Number}", number);
         return 0;
-    }
-
-    private static int CmdRun(string[] args, ProjectContext ctx)
-    {
-        if (args.Length == 0 || args[0] != "--yolo")
-        {
-            Console.Error.WriteLine("Uso: ne2-factory backlog run --yolo");
-            Console.WriteLine(Usage);
-            return 1;
-        }
-
-        Directory.CreateDirectory(ctx.BacklogDir);
-        EnsureLabels();
-
-        var dbPath = HangfireSetup.ConfigureStorage(ctx);
-        using var server = new BackgroundJobServer();
-        Console.WriteLine($"Servidor de jobs en background arrancado (gap-scout scan usa {dbPath}).");
-
-        Console.WriteLine($"Escuchando issues con label '{QueueLabel}' (cada {ctx.BacklogPollIntervalSeconds}s). Ctrl-C para parar.");
-        while (true)
-        {
-            if (!ProcessQueue(ctx))
-            {
-                Console.WriteLine("Worker detenido (revisión manual necesaria antes de reanudar).");
-                return 1;
-            }
-            Thread.Sleep(TimeSpan.FromSeconds(ctx.BacklogPollIntervalSeconds));
-        }
     }
 
     // Processes every currently queued issue once. Returns false if it hit a
     // condition that needs human review before polling should resume.
-    private static bool ProcessQueue(ProjectContext ctx)
+    public bool ProcessQueue()
     {
         var claudeFlags = new[] { "--print", "--dangerously-skip-permissions" };
-        var issues = GitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number")
+        var issues = gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number")
             .Select(i => i.Number)
             .OrderBy(n => n)
             .ToArray();
 
-        if (issues.Length == 0) return true;
+        if (issues.Length == 0)
+        {
+            logger.LogInformation("No hay issues por procesar.");
+            return true;
+        }
 
         var seen = 0;
         foreach (var n in issues)
         {
             // Otro proceso pudo haber reencolado/movido el issue entre tanto; re-verifica.
-            var current = GitHubCli.ViewIssue(n, "state,labels");
+            var current = gitHubCli.ViewIssue(n, "state,labels");
             if (current is null) continue;
             var labelNames = current.Labels?.Select(l => l.Name).ToHashSet() ?? [];
             if (current.State != "OPEN" || !labelNames.Contains(QueueLabel) || !labelNames.Contains(RefinedLabel))
                 continue;
 
-            Proc.RunInherited("git", ["pull", "--ff-only"]);
+            proc.RunInherited("git", ["pull", "--ff-only"]);
 
             if (File.Exists(ctx.SignalFile)) File.Delete(ctx.SignalFile);
 
-            var issueJson = GitHubCli.ViewIssue(n, "title,body,url,comments");
+            var issueJson = gitHubCli.ViewIssue(n, "title,body,url,comments");
             if (issueJson is null) continue;
             var title = issueJson.Title;
             var body = issueJson.Body ?? "";
@@ -174,13 +159,10 @@ internal static class BacklogCommand
                 .Select(c => $"-- comment by {c.Author.Login} ({c.CreatedAt}) --\n{c.Body}"));
 
             seen++;
-            Console.WriteLine();
-            Console.WriteLine("==================================================");
-            Console.WriteLine($"Ticket: #{n} {title}");
-            Console.WriteLine("==================================================");
+            logger.LogInformation("Ticket: #{Number} {Title}", n, title);
 
             var prompt = $"/work-ticket\n\nGitHub issue: #{n} ({url})\n\n{title}\n\n{body}\n\n{comments}";
-            Proc.RunInherited("claude", [.. claudeFlags, prompt]);
+            proc.RunInherited("claude", [.. claudeFlags, prompt]);
 
             if (File.Exists(ctx.SignalFile))
             {
@@ -191,28 +173,27 @@ internal static class BacklogCommand
                 switch (status)
                 {
                     case "done":
-                        GitHubCli.CloseIssue(n);
-                        Console.WriteLine($"-> hecho: #{n}");
+                        gitHubCli.CloseIssue(n);
+                        logger.LogInformation("-> hecho: #{Number}", n);
                         break;
                     case "blocked":
-                        GitHubCli.EditIssueLabels(n, QueueLabel, FailedLabel);
-                        Console.WriteLine($"-> bloqueado: #{n}{(string.IsNullOrEmpty(reason) ? "" : $" ({reason})")}. Revisa y usa 'requeue {n}' si procede.");
+                        gitHubCli.EditIssueLabels(n, QueueLabel, FailedLabel);
+                        logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", n, string.IsNullOrEmpty(reason) ? "" : $" ({reason})", n);
                         break;
                     default:
-                        Console.WriteLine($"-> señal desconocida ('{status}'), dejo #{n} en cola para revisión manual.");
+                        logger.LogWarning("-> señal desconocida ('{Status}'), dejo #{Number} en cola para revisión manual.", status, n);
                         return false;
                 }
                 File.Delete(ctx.SignalFile);
             }
             else
             {
-                Console.WriteLine($"-> la sesión terminó sin señal (salida manual/crash). Dejo #{n} en cola y paro.");
+                logger.LogWarning("-> la sesión terminó sin señal (salida manual/crash). Dejo #{Number} en cola y paro.", n);
                 return false;
             }
         }
 
-        Console.WriteLine();
-        Console.WriteLine($"Pasada de cola completada. Vistos: {seen}/{issues.Length} tickets.");
+        logger.LogInformation("Pasada de cola completada. Vistos: {Seen}/{Total} tickets.", seen, issues.Length);
         return true;
     }
 }

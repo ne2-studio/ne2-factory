@@ -1,15 +1,13 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
-namespace Ne2Factory.Cli;
+namespace Ne2Factory.Cli.Services;
 
 // Thin wrapper around external process execution (git, gh, claude) — the .NET
 // equivalent of the bash scripts shelling out directly.
-internal static class Proc
+internal sealed class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
 {
-    // Captures stdout (trimmed callers decide); stderr is inherited so real
-    // failures are still visible on the console, matching bash `$(cmd)` which
-    // only captures stdout.
-    public static (string Stdout, string Stderr, int ExitCode) Capture(string exe, IReadOnlyList<string> args, string? stdin = null)
+    public (string Stdout, string Stderr, int ExitCode) Capture(string exe, IReadOnlyList<string> args, string? stdin = null)
     {
         var psi = new ProcessStartInfo(exe)
         {
@@ -19,6 +17,8 @@ internal static class Proc
             UseShellExecute = false,
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
+
+        logger.LogDebug("Ejecutando (captura): {Exe} {Args}", exe, string.Join(' ', args));
 
         using var process = Process.Start(psi)!;
         if (stdin is not null)
@@ -32,9 +32,7 @@ internal static class Proc
         return (stdout, stderr, process.ExitCode);
     }
 
-    // Runs a process with all standard streams inherited from this one, e.g.
-    // `claude ...` or `git pull` where output should show up live.
-    public static int RunInherited(string exe, IReadOnlyList<string> args, string? workingDirectory = null)
+    public int RunInherited(string exe, IReadOnlyList<string> args, string? workingDirectory = null)
     {
         var psi = new ProcessStartInfo(exe)
         {
@@ -42,6 +40,8 @@ internal static class Proc
             WorkingDirectory = workingDirectory ?? "",
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
+
+        logger.LogDebug("Ejecutando (heredado): {Exe} {Args}", exe, string.Join(' ', args));
 
         using var process = Process.Start(psi)!;
         process.WaitForExit();

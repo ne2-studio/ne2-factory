@@ -1,8 +1,14 @@
 using Hangfire;
+using Microsoft.Extensions.Logging;
 
 namespace Ne2Factory.Cli.GapScout;
 
-internal static class GapScoutCommand
+internal sealed class GapScoutCommand(
+    IGitHubCli gitHubCli,
+    ProjectContext ctx,
+    IBackgroundJobClient backgroundJobs,
+    JobStorage jobStorage,
+    ILogger<GapScoutCommand> logger)
 {
     private const string Label = "gap-scout";
 
@@ -56,28 +62,28 @@ internal static class GapScoutCommand
         schedule this with a systemd timer.
         """;
 
-    public static int Run(string[] args, ProjectContext ctx)
+    public int Run(string[] args)
     {
         var command = args.Length > 0 ? args[0] : "";
         var rest = args.Skip(1).ToArray();
         return command switch
         {
-            "scan" => CmdScan(rest, ctx),
+            "scan" => CmdScan(rest),
             "-h" or "--help" or "" => Print(Usage),
             _ => Unknown(command)
         };
     }
 
-    private static int Print(string text) { Console.WriteLine(text); return 0; }
+    private int Print(string text) { logger.LogInformation("{Text}", text); return 0; }
 
-    private static int Unknown(string command)
+    private int Unknown(string command)
     {
-        Console.Error.WriteLine($"Comando desconocido: {command}");
-        Console.WriteLine(Usage);
+        logger.LogError("Comando desconocido: {Command}", command);
+        logger.LogInformation("{Text}", Usage);
         return 1;
     }
 
-    private static int CmdScan(string[] args, ProjectContext ctx)
+    private int CmdScan(string[] args)
     {
         var target = args.Length > 0 ? args[0] : "";
         var usage = $"Uso: ne2-factory gap-scout scan <scope|all> [--yolo]  (scopes: {string.Join(' ', ctx.GapScoutScopes)})";
@@ -88,7 +94,7 @@ internal static class GapScoutCommand
             case "--yolo": yolo = true; break;
             case "": break;
             default:
-                Console.Error.WriteLine(usage);
+                logger.LogError("{Usage}", usage);
                 return 1;
         }
 
@@ -103,30 +109,28 @@ internal static class GapScoutCommand
         }
         else
         {
-            Console.Error.WriteLine(usage);
+            logger.LogError("{Usage}", usage);
             return 1;
         }
 
-        HangfireSetup.ConfigureStorage(ctx);
+        if (!gitHubCli.TryCreateLabel(Label, "5319E7", "Architecture initiative proposed by gap-scout, pending approval", out var error) && error is not null)
+            logger.LogWarning("aviso: no se pudo crear la label '{Label}': {Error}", Label, error);
 
-        if (!GitHubCli.TryCreateLabel(Label, "5319E7", "Architecture initiative proposed by gap-scout, pending approval", out var error) && error is not null)
-            Console.Error.WriteLine($"aviso: no se pudo crear la label '{Label}': {error}");
-
-        var monitoring = JobStorage.Current.GetMonitoringApi();
+        var monitoring = jobStorage.GetMonitoringApi();
         foreach (var scope in scopes)
         {
             var normalizedScope = scope.TrimEnd('/') + "/";
             if (IsAlreadyQueued(monitoring, normalizedScope))
             {
-                Console.Error.WriteLine($"aviso: ya hay un scan encolado o en curso para el scope '{normalizedScope}'; lo salto.");
+                logger.LogWarning("aviso: ya hay un scan encolado o en curso para el scope '{Scope}'; lo salto.", normalizedScope);
                 continue;
             }
 
-            var jobId = BackgroundJob.Enqueue<GapScoutJobs>(job => job.RunScan(normalizedScope, yolo));
-            Console.WriteLine($"Encolado: {jobId} (scope: {normalizedScope})");
+            var jobId = backgroundJobs.Enqueue<GapScoutJobs>(job => job.RunScan(normalizedScope, yolo));
+            logger.LogInformation("Encolado: {JobId} (scope: {Scope})", jobId, normalizedScope);
         }
 
-        Console.WriteLine("El job server vive dentro de 'backlog run --yolo'; sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
+        logger.LogInformation("El job server vive dentro de 'backlog run --yolo'; sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
         return 0;
     }
 

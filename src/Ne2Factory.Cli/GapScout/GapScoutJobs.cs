@@ -1,11 +1,15 @@
+using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Services;
+
 namespace Ne2Factory.Cli.GapScout;
 
 // Hangfire job body — the equivalent of what used to run inside a dedicated
 // tmux window for `bin/gap-scout scan`: spawns one `claude` session running
 // the architecture-gap-scout agent for a single scope. Executes inside the
 // Hangfire server hosted by `backlog run --yolo`, so its stdout/stderr are
-// inherited straight into that same terminal.
-public sealed class GapScoutJobs
+// inherited straight into that same terminal. Instantiated per job by
+// Hangfire's DI-backed job activator (see AddHangfire in Program.cs).
+public sealed class GapScoutJobs(IProcessRunner proc, ILogger<GapScoutJobs> logger)
 {
     public const string AllowedTools = "Agent Bash(gh issue list *) Bash(gh issue create *) Bash(gh issue view *) Bash(gh label create *)";
 
@@ -25,10 +29,7 @@ public sealed class GapScoutJobs
         }
         args.Add(prompt);
 
-        Console.WriteLine();
-        Console.WriteLine("==================================================");
-        Console.WriteLine($"gap-scout: {scope}");
-        Console.WriteLine("==================================================");
-        Proc.RunInherited("claude", args);
+        logger.LogInformation("gap-scout: {Scope}", scope);
+        proc.RunInherited("claude", args);
     }
 }

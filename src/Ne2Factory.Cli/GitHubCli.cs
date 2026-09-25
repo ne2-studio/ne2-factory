@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli;
 
@@ -25,21 +27,32 @@ internal sealed record IssueDetail(
     [property: JsonPropertyName("state")] string? State,
     [property: JsonPropertyName("labels")] IssueLabel[]? Labels);
 
+internal interface IGitHubCli
+{
+    void CreateLabelSilently(string name, string color, string description);
+    bool TryCreateLabel(string name, string color, string description, out string? error);
+    IssueSummary[] ListIssues(IEnumerable<string> labels, string state, string fields);
+    string CreateIssue(string label, string title, string body);
+    void EditIssueLabels(int number, string? removeLabel, string? addLabel);
+    void CloseIssue(int number);
+    IssueDetail? ViewIssue(int number, string fields);
+}
+
 // Wraps `gh` invocations. Every issue query goes through `--json` and is parsed
 // here instead of relying on `gh --jq`, so behaviour doesn't depend on gh's
 // bundled jq version — the filtering logic replicates the original `--jq` filters.
-internal static class GitHubCli
+internal sealed class GitHubCli(IProcessRunner proc, ILogger<GitHubCli> logger) : IGitHubCli
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public static void CreateLabelSilently(string name, string color, string description)
+    public void CreateLabelSilently(string name, string color, string description)
     {
-        Proc.Capture("gh", ["label", "create", name, "--color", color, "--description", description]);
+        proc.Capture("gh", ["label", "create", name, "--color", color, "--description", description]);
     }
 
-    public static bool TryCreateLabel(string name, string color, string description, out string? error)
+    public bool TryCreateLabel(string name, string color, string description, out string? error)
     {
-        var (_, stderr, exit) = Proc.Capture("gh", ["label", "create", name, "--color", color, "--description", description]);
+        var (_, stderr, exit) = proc.Capture("gh", ["label", "create", name, "--color", color, "--description", description]);
         if (exit == 0 || stderr.Contains("already exists", StringComparison.OrdinalIgnoreCase))
         {
             error = null;
@@ -49,62 +62,62 @@ internal static class GitHubCli
         return false;
     }
 
-    public static IssueSummary[] ListIssues(IEnumerable<string> labels, string state, string fields)
+    public IssueSummary[] ListIssues(IEnumerable<string> labels, string state, string fields)
     {
         var args = new List<string> { "issue", "list" };
         foreach (var label in labels) { args.Add("--label"); args.Add(label); }
         args.Add("--state"); args.Add(state);
         args.Add("--json"); args.Add(fields);
 
-        var (stdout, stderr, exit) = Proc.Capture("gh", args);
+        var (stdout, stderr, exit) = proc.Capture("gh", args);
         if (exit != 0)
         {
-            Console.Error.WriteLine(stderr);
+            logger.LogError("{Stderr}", stderr);
             Environment.Exit(1);
         }
         return JsonSerializer.Deserialize<IssueSummary[]>(stdout, JsonOptions) ?? [];
     }
 
-    public static string CreateIssue(string label, string title, string body)
+    public string CreateIssue(string label, string title, string body)
     {
-        var (stdout, stderr, exit) = Proc.Capture("gh", ["issue", "create", "--label", label, "--title", title, "--body", body]);
+        var (stdout, stderr, exit) = proc.Capture("gh", ["issue", "create", "--label", label, "--title", title, "--body", body]);
         if (exit != 0)
         {
-            Console.Error.WriteLine(stderr);
+            logger.LogError("{Stderr}", stderr);
             Environment.Exit(1);
         }
         return stdout.Trim();
     }
 
-    public static void EditIssueLabels(int number, string? removeLabel, string? addLabel)
+    public void EditIssueLabels(int number, string? removeLabel, string? addLabel)
     {
         var args = new List<string> { "issue", "edit", number.ToString() };
         if (removeLabel is not null) { args.Add("--remove-label"); args.Add(removeLabel); }
         if (addLabel is not null) { args.Add("--add-label"); args.Add(addLabel); }
-        var (_, stderr, exit) = Proc.Capture("gh", args);
+        var (_, stderr, exit) = proc.Capture("gh", args);
         if (exit != 0)
         {
-            Console.Error.WriteLine(stderr);
+            logger.LogError("{Stderr}", stderr);
             Environment.Exit(1);
         }
     }
 
-    public static void CloseIssue(int number)
+    public void CloseIssue(int number)
     {
-        var (_, stderr, exit) = Proc.Capture("gh", ["issue", "close", number.ToString()]);
+        var (_, stderr, exit) = proc.Capture("gh", ["issue", "close", number.ToString()]);
         if (exit != 0)
         {
-            Console.Error.WriteLine(stderr);
+            logger.LogError("{Stderr}", stderr);
             Environment.Exit(1);
         }
     }
 
-    public static IssueDetail? ViewIssue(int number, string fields)
+    public IssueDetail? ViewIssue(int number, string fields)
     {
-        var (stdout, stderr, exit) = Proc.Capture("gh", ["issue", "view", number.ToString(), "--json", fields]);
+        var (stdout, stderr, exit) = proc.Capture("gh", ["issue", "view", number.ToString(), "--json", fields]);
         if (exit != 0)
         {
-            Console.Error.WriteLine(stderr);
+            logger.LogError("{Stderr}", stderr);
             return null;
         }
         return JsonSerializer.Deserialize<IssueDetail>(stdout, JsonOptions);
