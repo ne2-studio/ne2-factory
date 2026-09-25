@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using Ne2Factory.Cli.Services;
+using Ne2Factory.Cli.Agents;
 
 namespace Ne2Factory.Cli.GapScout;
 
@@ -9,7 +9,7 @@ namespace Ne2Factory.Cli.GapScout;
 // Hangfire server hosted by `backlog run --yolo`, so its stdout/stderr are
 // inherited straight into that same terminal. Instantiated per job by
 // Hangfire's DI-backed job activator (see AddHangfire in Program.cs).
-public sealed class GapScoutJobs(IProcessRunner proc, ILogger<GapScoutJobs> logger)
+public sealed class GapScoutJobs(IAgent agent, ILogger<GapScoutJobs> logger)
 {
     public const string AllowedTools = "Agent Bash(gh issue list *) Bash(gh issue create *) Bash(gh issue view *) Bash(gh label create *)";
 
@@ -17,19 +17,11 @@ public sealed class GapScoutJobs(IProcessRunner proc, ILogger<GapScoutJobs> logg
     {
         var prompt = $"Spawn the `architecture-gap-scout` agent with:\n\nScope: {scope}\n";
 
-        var args = new List<string>();
-        if (yolo)
-        {
-            args.Add("--dangerously-skip-permissions");
-        }
-        else
-        {
-            args.Add("--allowed-tools");
-            args.Add(AllowedTools);
-        }
-        args.Add(prompt);
-
         logger.LogInformation("gap-scout: {Scope}", scope);
-        proc.RunInherited("claude", args);
+        agent.Run(prompt, new AgentOptions
+        {
+            SkipPermissions = yolo,
+            AllowedTools = yolo ? null : AllowedTools,
+        });
     }
 }

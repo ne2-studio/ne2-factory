@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Agents;
 using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.Backlog;
@@ -6,6 +7,7 @@ namespace Ne2Factory.Cli.Backlog;
 internal sealed class BacklogCommand(
     IGitHubCli gitHubCli,
     IProcessRunner proc,
+    IAgent agent,
     ProjectContext ctx,
     ILogger<BacklogCommand> logger)
 {
@@ -124,7 +126,6 @@ internal sealed class BacklogCommand(
     // condition that needs human review before polling should resume.
     public bool ProcessQueue()
     {
-        var claudeFlags = new[] { "--print", "--dangerously-skip-permissions" };
         var issues = gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number")
             .Select(i => i.Number)
             .OrderBy(n => n)
@@ -169,7 +170,7 @@ internal sealed class BacklogCommand(
             logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", n, url);
 
             var prompt = $"/work-ticket\n\nGitHub issue: #{n} ({url})\n\n{title}\n\n{body}\n\n{comments}";
-            proc.RunInherited("claude", [.. claudeFlags, prompt]);
+            agent.Run(prompt, new AgentOptions { SkipPermissions = true });
 
             if (File.Exists(ctx.SignalFile))
             {

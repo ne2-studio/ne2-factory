@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli;
+using Ne2Factory.Cli.Agents;
 using Ne2Factory.Cli.Backlog;
 using Ne2Factory.Cli.Configuration;
 using Ne2Factory.Cli.GapScout;
@@ -33,6 +34,7 @@ builder.Services.AddSerilog((sp, loggerConfig) => loggerConfig
 builder.Services.AddSingleton(new RootDirectory(rootDir));
 builder.Services.AddSingleton<ProjectContext>();
 builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
+builder.Services.AddSingleton<IAgent, ClaudeAgent>();
 builder.Services.AddSingleton<IGitHubCli, GitHubCli>();
 builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<GapScoutCommand>();
