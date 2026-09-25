@@ -136,6 +136,8 @@ internal sealed class BacklogCommand(
             return true;
         }
 
+        logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", issues.Length, string.Join(", ", issues.Select(n => $"#{n}")));
+
         var seen = 0;
         foreach (var n in issues)
         {
@@ -144,8 +146,12 @@ internal sealed class BacklogCommand(
             if (current is null) continue;
             var labelNames = current.Labels?.Select(l => l.Name).ToHashSet() ?? [];
             if (current.State != "OPEN" || !labelNames.Contains(QueueLabel) || !labelNames.Contains(RefinedLabel))
+            {
+                logger.LogInformation("Issue #{Number} ya no cumple las condiciones (estado/labels cambiaron); lo salto.", n);
                 continue;
+            }
 
+            logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", n);
             proc.RunInherited("git", ["pull", "--ff-only"]);
 
             if (File.Exists(ctx.SignalFile)) File.Delete(ctx.SignalFile);
@@ -160,6 +166,7 @@ internal sealed class BacklogCommand(
 
             seen++;
             logger.LogInformation("Ticket: #{Number} {Title}", n, title);
+            logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", n, url);
 
             var prompt = $"/work-ticket\n\nGitHub issue: #{n} ({url})\n\n{title}\n\n{body}\n\n{comments}";
             proc.RunInherited("claude", [.. claudeFlags, prompt]);
