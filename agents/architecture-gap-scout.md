@@ -1,6 +1,6 @@
 ---
 name: architecture-gap-scout
-description: "Runs find-architecture-gaps over a given scope, dedupes against previously reported initiatives, and files new ones as GitHub issues pending approval. Driven by bin/gap-scout, not for direct end-user requests."
+description: "Runs find-architecture-gaps over a given scope, dedupes against previously reported initiatives, and files new ones as GitHub issues pending approval. Driven by ne2-factory gap-scout, not for direct end-user requests."
 tools: Bash, Read, Grep, Glob, Skill
 model: sonnet
 ---
@@ -8,17 +8,18 @@ model: sonnet
 ## Goal
 
 Produce fresh, non-duplicate architecture initiatives for the scope given in the prompt,
-filed as GitHub issues labeled `gap-scout` for the reviewer to review. This agent runs in
-its own tmux window, dispatched by `bin/gap-scout scan`, with no prior context —
-everything needed comes from the prompt and the repository itself. It's usually
-unattended, but a permission prompt it can't resolve pauses in that window rather than
-failing silently — the reviewer may answer it directly.
+filed as GitHub issues labeled `gap-scout` for the reviewer to review. This agent runs as
+a background job dispatched by `ne2-factory gap-scout scan`, processed by the job server
+hosted inside `ne2-factory backlog run --yolo`, with no prior context — everything needed
+comes from the prompt and the repository itself. It's usually unattended (`--yolo`); a
+permission prompt it can't resolve has no attached terminal to answer it on, so run this
+agent with `--yolo` unless you plan to watch its output live.
 
 "The reviewer" is the person named in `.ne2-factory/project.md`.
 
 Filing an issue is the end of this agent's responsibility. It never approves its own
 findings: approval is the reviewer adding the `backlog` label by hand, which hands the
-issue to `bin/backlog`'s existing worker. This agent must never add that label
+issue to `ne2-factory backlog`'s existing worker. This agent must never add that label
 itself.
 
 ## Workflow

@@ -1,23 +1,26 @@
 # Backlog tooling
 
 ne2-factory's orchestration layer: dev-workflow automation over GitHub Issues, separate
-from any product code in the repo it runs on. Paths below are relative to the factory
-bundle; run the scripts from the root of the repo being worked on.
+from any product code in the repo it runs on. Both commands live in the `ne2-factory`
+.NET console app (`src/Ne2Factory.Cli`); run them from the root of the repo being worked
+on.
 
-* `bin/backlog` — queues GitHub issues (label `backlog`) and runs each one that's also
+* `ne2-factory backlog` — runs each queued GitHub issue (label `backlog`) that's also
   labeled `refined` unattended through the `work-ticket` skill: delegate implementation,
-  verify, commit, push, comment the result back on the issue. See `bin/backlog --help`.
+  verify, commit, push, comment the result back on the issue. See
+  `ne2-factory backlog --help`. Tickets are queued by filing a GitHub issue with the
+  `backlog` label directly — this tool no longer queues tickets itself.
 * `refine-backlog` (Claude Code skill, run interactively as `/refine-backlog`) — walks every
   queued ticket that isn't yet `refined`, one at a time, spawning a `refiner` agent that asks
   the reviewer directly to resolve ambiguity before the ticket is safe to hand to unattended
   implementation. This is the only place in the pipeline where clarifying questions are asked
   live — `work-ticket` never asks anything; a ticket that turns out ambiguous during
   implementation is reported `blocked` instead, to go back through refinement.
-* `bin/gap-scout` — runs the `find-architecture-gaps` skill periodically over a configured
-  scope (`GAP_SCOUT_SCOPES` in `.ne2-factory.env`) via the `architecture-gap-scout` agent,
-  dedupes against previously filed initiatives, and files new ones as GitHub issues
-  (label `gap-scout`) pending approval. See [`gap-scout.md`](gap-scout.md) for how to
-  schedule it and how approval works.
+* `ne2-factory gap-scout` — runs the `find-architecture-gaps` skill periodically over a
+  configured scope (`GAP_SCOUT_SCOPES` in `.ne2-factory.env`) via the
+  `architecture-gap-scout` agent, dedupes against previously filed initiatives, and files
+  new ones as GitHub issues (label `gap-scout`) pending approval. See
+  [`gap-scout.md`](gap-scout.md) for how to schedule it and how approval works.
 
 "The reviewer" is the person named in the consuming repo's `.ne2-factory/project.md`.
 
@@ -26,5 +29,5 @@ bundle; run the scripts from the root of the repo being worked on.
 `gap-scout` never queues its own findings for execution — it only proposes. Approving an
 initiative means adding the `backlog` label to its issue by hand; that queues it, same as any
 manually-filed ticket — it still needs a `refine-backlog` pass (label `refined`) before
-`bin/backlog`'s worker will pick it up. Leaving an issue unlabeled (or closing it) means
-"not now" — it won't be re-filed verbatim on the next scan.
+`ne2-factory backlog`'s worker will pick it up. Leaving an issue unlabeled (or closing it)
+means "not now" — it won't be re-filed verbatim on the next scan.

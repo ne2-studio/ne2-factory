@@ -1,6 +1,6 @@
 ---
 name: refine-backlog
-description: "Interactive session that refines every unrefined backlog ticket (GitHub issues labeled `backlog` without `refined`) one at a time via the refiner agent, so bin/backlog only ever picks up implementation-ready tickets."
+description: "Interactive session that refines every unrefined backlog ticket (GitHub issues labeled `backlog` without `refined`) one at a time via the refiner agent, so ne2-factory backlog only ever picks up implementation-ready tickets."
 disable-model-invocation: true
 model: haiku
 ---
@@ -8,7 +8,7 @@ model: haiku
 ## Goal
 
 Turn every currently-queued, not-yet-refined backlog ticket into an implementation-ready
-one before `bin/backlog run` picks it up. This is a deliberate, interactive session
+one before `ne2-factory backlog run` picks it up. This is a deliberate, interactive session
 the reviewer runs themselves — it's the only place in the pipeline where clarifying
 questions are asked live, keeping interactive refinement and unattended implementation
 separate. "The reviewer" is the person named in `.ne2-factory/project.md`.
@@ -38,7 +38,7 @@ For each ticket, in order:
 
 Summarize what was refined: ticket numbers/titles, and briefly what was clarified or
 decided for each. Refined tickets are now labeled `refined` and will be picked up by
-`bin/backlog run` on its next pass.
+`ne2-factory backlog run` on its next pass.
 
 ## Constraints
 

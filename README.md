@@ -78,17 +78,18 @@ EOF
 
 ### 2. `.ne2-factory.env` (optional)
 
-Shell-only config for the orchestration scripts (`bin/backlog`, `bin/gap-scout`).
-Every value has a built-in default — only create this file to override one:
+Config for the orchestration tooling (`ne2-factory backlog`,
+`ne2-factory gap-scout`). Every value has a built-in default — only create this file to
+override one:
 
 ```bash
 cat > .ne2-factory.env <<'EOF'
-# Shell config for ne2-factory's orchestration scripts (backlog, gap-scout).
-# Only bash reads this. Anything an agent reasons about goes in .ne2-factory/project.md.
+# Config for ne2-factory's orchestration tooling (backlog, gap-scout).
+# Anything an agent reasons about goes in .ne2-factory/project.md instead.
 # Every value has a built-in default; this file only overrides.
 
-# tmux session the backlog worker and gap-scout windows share.
-TMUX_SESSION=backlog
+# How often (seconds) `ne2-factory backlog run` polls the queue.
+BACKLOG_POLL_INTERVAL=30
 
 # Scopes gap-scout may scan, space-separated. `scan all` expands to this list.
 GAP_SCOUT_SCOPES="<space-separated top-level dirs, e.g. app api admin>"
@@ -123,14 +124,17 @@ naming a project-specific command.
 
 ## Running the backlog worker and gap-scout
 
-From the root of the project being worked on (once the plugin is installed and the
-project has the adapter above):
+Both are subcommands of the `ne2-factory` .NET console app, at
+`src/Ne2Factory.Cli` in the factory bundle. `dotnet run` compiles it on demand — no
+separate install/publish step. From the root of the project being worked on (once the
+plugin is installed and the project has the adapter above):
 
 ```bash
-~/.claude/plugins/marketplaces/ne2/bin/backlog --help
-~/.claude/plugins/marketplaces/ne2/bin/gap-scout --help
+dotnet run --project ~/.claude/plugins/marketplaces/ne2/src/Ne2Factory.Cli -c Release -- backlog --help
+dotnet run --project ~/.claude/plugins/marketplaces/ne2/src/Ne2Factory.Cli -c Release -- gap-scout --help
 ```
 
-Both read `.ne2-factory.env` for their shell-only config. See
-[`docs/backlog/README.md`](docs/backlog/README.md) for the full workflow (queueing
-tickets, refining, running unattended, approving gap-scout findings).
+Both read `.ne2-factory.env` for their config. Tickets are queued by filing a GitHub
+issue with the `backlog` label directly, not through this tool. See
+[`docs/backlog/README.md`](docs/backlog/README.md) for the full workflow (refining,
+running unattended, approving gap-scout findings).

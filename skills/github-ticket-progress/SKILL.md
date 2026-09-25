@@ -14,21 +14,21 @@ conventions. "The reviewer" below is the person named in `.ne2-factory/project.m
 
 | State | Labels | Set by |
 |---|---|---|
-| Queued, not refined | `backlog` | `bin/backlog add`, or the reviewer labeling manually |
+| Queued, not refined | `backlog` | filed directly on GitHub, or the reviewer labeling manually |
 | Queued, ready | `backlog` + `refined` | `refiner`, after resolving material ambiguity |
-| Done | issue closed, `backlog` kept | `bin/backlog`'s worker |
-| Blocked/failed | `backlog:failed` (`backlog` removed) | `bin/backlog`'s worker |
+| Done | issue closed, `backlog` kept | `ne2-factory backlog`'s worker |
+| Blocked/failed | `backlog:failed` (`backlog` removed) | `ne2-factory backlog`'s worker |
 
 The `refined` transition is the only one an agent performs directly:
 
 ```bash
 gh label create refined --color 0E8A16 \
-  --description "Ticket refined, ready for bin/backlog" >/dev/null 2>&1 || true
+  --description "Ticket refined, ready for ne2-factory backlog" >/dev/null 2>&1 || true
 gh issue edit <n> --add-label refined
 ```
 
 Every other transition (queued → done, queued → blocked/failed, closing the issue) is
-`bin/backlog`'s worker's job, driven by the `status=done`/`status=blocked` signal
+`ne2-factory backlog`'s worker's job, driven by the `status=done`/`status=blocked` signal
 file — not something an agent sets by editing labels itself. Never add/remove `backlog`
 or `backlog:failed`, and never close the issue from an agent.
 
@@ -51,6 +51,6 @@ stand alone — the reviewer may read it without the session that produced it.
 ## Constraints
 
 - Never close an issue, and never add/remove `backlog` or `backlog:failed` — those
-  transitions belong to `bin/backlog`'s worker.
+  transitions belong to `ne2-factory backlog`'s worker.
 - If posting the comment fails (network, permissions), don't let that block your own
   completion signal; note the failure and continue.
