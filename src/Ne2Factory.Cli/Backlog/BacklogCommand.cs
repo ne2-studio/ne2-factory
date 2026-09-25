@@ -148,17 +148,11 @@ internal sealed class BacklogCommand(
 
             if (File.Exists(ctx.SignalFile)) File.Delete(ctx.SignalFile);
 
-            var title = current.Title;
-            var body = current.Body ?? "";
-            var url = current.Url;
-            var comments = string.Join("\n", current.Comments);
-
             seen++;
-            logger.LogInformation("Ticket: #{Number} {Title}", n, title);
-            logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", n, url);
+            logger.LogInformation("Ticket: #{Number} {Title}", n, current.Title);
+            logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", n, current.Url);
 
-            var prompt = $"/work-ticket\n\nGitHub issue: #{n} ({url})\n\n{title}\n\n{body}\n\n{comments}";
-            agent.Run(prompt, new AgentOptions { SkipPermissions = true });
+            agent.Run(BuildWorkTicketPrompt(current), new AgentOptions { SkipPermissions = true });
 
             if (File.Exists(ctx.SignalFile))
             {
@@ -191,5 +185,11 @@ internal sealed class BacklogCommand(
 
         logger.LogInformation("Pasada de cola completada. Vistos: {Seen}/{Total} tickets.", seen, issues.Length);
         return true;
+    }
+
+    private static string BuildWorkTicketPrompt(BacklogItem item)
+    {
+        var comments = string.Join("\n", item.Comments);
+        return $"/work-ticket\n\nGitHub issue: #{item.Number} ({item.Url})\n\n{item.Title}\n\n{item.Body ?? ""}\n\n{comments}";
     }
 }
