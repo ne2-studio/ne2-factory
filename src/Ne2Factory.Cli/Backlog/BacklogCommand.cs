@@ -5,15 +5,15 @@ using Ne2Factory.Cli.Services;
 namespace Ne2Factory.Cli.Backlog;
 
 internal sealed class BacklogCommand(
-    IGitHubCli gitHubCli,
+    IBacklog backlog,
     IProcessRunner proc,
     IAgent agent,
     ProjectContext ctx,
     ILogger<BacklogCommand> logger)
 {
-    public const string QueueLabel = "backlog";
-    public const string RefinedLabel = "refined";
-    public const string FailedLabel = "backlog:failed";
+    public const string QueueLabel = GithubIssuesBacklog.QueueLabel;
+    public const string RefinedLabel = GithubIssuesBacklog.RefinedLabel;
+    public const string FailedLabel = GithubIssuesBacklog.FailedLabel;
 
     private const string Usage = """
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
@@ -80,33 +80,25 @@ internal sealed class BacklogCommand(
         }
     }
 
-    public void EnsureLabels()
-    {
-        gitHubCli.CreateLabelSilently(QueueLabel, "0E8A16", "Backlog ticket queued for bin/backlog");
-        gitHubCli.CreateLabelSilently(RefinedLabel, "0E8A16", "Ticket refinado, listo para bin/backlog");
-        gitHubCli.CreateLabelSilently(FailedLabel, "B60205", "Backlog ticket blocked, needs review before requeuing");
-    }
+    public void EnsureLabels() => backlog.EnsureLabels();
 
     private void CmdList()
     {
         logger.LogInformation("En cola, sin refinar:");
-        foreach (var issue in gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels"))
-        {
-            if (issue.Labels?.Any(l => l.Name == RefinedLabel) != true)
-                logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
-        }
+        foreach (var item in backlog.ListUnrefined())
+            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
 
         logger.LogInformation("En cola, lista para implementar:");
-        foreach (var issue in gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number,title"))
-            logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
+        foreach (var item in backlog.ListRefined())
+            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
 
         logger.LogInformation("Hechos:");
-        foreach (var issue in gitHubCli.ListIssues([QueueLabel], "closed", "number,title"))
-            logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
+        foreach (var item in backlog.ListDone())
+            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
 
         logger.LogInformation("Fallidos/bloqueados:");
-        foreach (var issue in gitHubCli.ListIssues([FailedLabel], "open", "number,title"))
-            logger.LogInformation("  #{Number}  {Title}", issue.Number, issue.Title);
+        foreach (var item in backlog.ListFailed())
+            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
     }
 
     private int CmdRequeue(string[] args)
@@ -117,7 +109,7 @@ internal sealed class BacklogCommand(
             logger.LogError("Uso: ne2-factory backlog requeue <número-de-issue>");
             return 1;
         }
-        gitHubCli.EditIssueLabels(number, FailedLabel, QueueLabel);
+        backlog.Requeue(number);
         logger.LogInformation("Reencolado: #{Number}", number);
         return 0;
     }
@@ -126,7 +118,7 @@ internal sealed class BacklogCommand(
     // condition that needs human review before polling should resume.
     public bool ProcessQueue()
     {
-        var issues = gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number")
+        var issues = backlog.ListRefined()
             .Select(i => i.Number)
             .OrderBy(n => n)
             .ToArray();
@@ -143,10 +135,9 @@ internal sealed class BacklogCommand(
         foreach (var n in issues)
         {
             // Otro proceso pudo haber reencolado/movido el issue entre tanto; re-verifica.
-            var current = gitHubCli.ViewIssue(n, "state,labels");
+            var current = backlog.GetItem(n);
             if (current is null) continue;
-            var labelNames = current.Labels?.Select(l => l.Name).ToHashSet() ?? [];
-            if (current.State != "OPEN" || !labelNames.Contains(QueueLabel) || !labelNames.Contains(RefinedLabel))
+            if (current.State != "OPEN" || !current.Labels.Contains(QueueLabel) || !current.Labels.Contains(RefinedLabel))
             {
                 logger.LogInformation("Issue #{Number} ya no cumple las condiciones (estado/labels cambiaron); lo salto.", n);
                 continue;
@@ -157,13 +148,10 @@ internal sealed class BacklogCommand(
 
             if (File.Exists(ctx.SignalFile)) File.Delete(ctx.SignalFile);
 
-            var issueJson = gitHubCli.ViewIssue(n, "title,body,url,comments");
-            if (issueJson is null) continue;
-            var title = issueJson.Title;
-            var body = issueJson.Body ?? "";
-            var url = issueJson.Url;
-            var comments = string.Join("\n", (issueJson.Comments ?? [])
-                .Select(c => $"-- comment by {c.Author.Login} ({c.CreatedAt}) --\n{c.Body}"));
+            var title = current.Title;
+            var body = current.Body ?? "";
+            var url = current.Url;
+            var comments = string.Join("\n", current.Comments);
 
             seen++;
             logger.LogInformation("Ticket: #{Number} {Title}", n, title);
@@ -181,11 +169,11 @@ internal sealed class BacklogCommand(
                 switch (status)
                 {
                     case "done":
-                        gitHubCli.CloseIssue(n);
+                        backlog.Close(n);
                         logger.LogInformation("-> hecho: #{Number}", n);
                         break;
                     case "blocked":
-                        gitHubCli.EditIssueLabels(n, QueueLabel, FailedLabel);
+                        backlog.MarkFailed(n);
                         logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", n, string.IsNullOrEmpty(reason) ? "" : $" ({reason})", n);
                         break;
                     default:
