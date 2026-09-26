@@ -25,7 +25,7 @@ internal sealed class RunsCommand(IAgentRunRepository runs, ILogger<RunsCommand>
     {
         if (args is ["-h"] or ["--help"])
         {
-            logger.LogInformation("{Text}", Usage);
+            Console.WriteLine(Usage);
             return 0;
         }
 
@@ -47,16 +47,14 @@ internal sealed class RunsCommand(IAgentRunRepository runs, ILogger<RunsCommand>
         var items = runs.ListRecent(limit);
         if (items.Count == 0)
         {
-            logger.LogInformation("Sin runs registradas todavía.");
+            Console.WriteLine("Sin runs registradas todavía.");
             return 0;
         }
 
         foreach (var run in items)
         {
-            logger.LogInformation(
-                "#{IssueNumber} {Status} agente={AgentName} encolada={QueuedAt:u} inicio={StartedAt:u} fin={FinishedAt:u} outcome={Outcome} error={Error} run={RunId}",
-                run.IssueNumber, run.Status, run.AgentName, run.QueuedAt, run.StartedAt, run.FinishedAt,
-                run.Outcome ?? "-", run.Error ?? "-", run.Id);
+            Console.WriteLine(
+                $"#{run.IssueNumber} {run.Status} agente={run.AgentName} encolada={run.QueuedAt:u} inicio={run.StartedAt:u} fin={run.FinishedAt:u} outcome={run.Outcome ?? "-"} error={run.Error ?? "-"} run={run.Id}");
         }
 
         return 0;

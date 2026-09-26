@@ -51,31 +51,31 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             case "list": CmdList(); return 0;
             case "refine": return CmdRefine(rest);
             case "requeue": return CmdRequeue(rest);
-            case "-h": case "--help": case "": logger.LogInformation("{Text}", Usage); return 0;
+            case "-h": case "--help": case "": Console.WriteLine(Usage); return 0;
             default:
                 logger.LogError("Comando desconocido: {Command}", command);
-                logger.LogInformation("{Text}", Usage);
+                Console.WriteLine(Usage);
                 return 1;
         }
     }
 
     private void CmdList()
     {
-        logger.LogInformation("En cola, sin refinar:");
+        Console.WriteLine("En cola, sin refinar:");
         foreach (var item in backlog.ListUnrefined())
-            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
+            Console.WriteLine($"  #{item.Number}  {item.Title}");
 
-        logger.LogInformation("En cola, lista para implementar:");
+        Console.WriteLine("En cola, lista para implementar:");
         foreach (var item in backlog.ListRefined())
-            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
+            Console.WriteLine($"  #{item.Number}  {item.Title}");
 
-        logger.LogInformation("Hechos:");
+        Console.WriteLine("Hechos:");
         foreach (var item in backlog.ListDone())
-            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
+            Console.WriteLine($"  #{item.Number}  {item.Title}");
 
-        logger.LogInformation("Fallidos/bloqueados:");
+        Console.WriteLine("Fallidos/bloqueados:");
         foreach (var item in backlog.ListFailed())
-            logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
+            Console.WriteLine($"  #{item.Number}  {item.Title}");
     }
 
     // Refines one ticket per interactive `claude` session (fresh context each
@@ -92,7 +92,7 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             var next = backlog.ListUnrefined().OrderBy(i => i.Number).FirstOrDefault();
             if (next is null)
             {
-                logger.LogInformation("No hay tickets pendientes de refinamiento.");
+                Console.WriteLine("No hay tickets pendientes de refinamiento.");
                 return 0;
             }
 
@@ -104,7 +104,7 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
                 continue;
             }
 
-            logger.LogInformation("Refinando #{Number} — {Title}", item.Number, item.Title);
+            Console.WriteLine($"Refinando #{item.Number} — {item.Title}");
             agent.RunInteractive(BuildRefinePrompt(item));
 
             var refined = backlog.GetItem(next.Number)?.State == TicketState.Refined;
@@ -114,7 +114,7 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
                 return 1;
             }
 
-            logger.LogInformation("#{Number} refinado.", next.Number);
+            Console.WriteLine($"#{next.Number} refinado.");
             if (!all) return 0;
         }
     }
@@ -148,7 +148,7 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             return 1;
         }
         backlog.Requeue(number);
-        logger.LogInformation("Reencolado: #{Number}", number);
+        Console.WriteLine($"Reencolado: #{number}");
         return 0;
     }
 }

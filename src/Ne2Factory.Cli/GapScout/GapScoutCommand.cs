@@ -75,12 +75,12 @@ internal sealed class GapScoutCommand(
         };
     }
 
-    private int Print(string text) { logger.LogInformation("{Text}", text); return 0; }
+    private static int Print(string text) { Console.WriteLine(text); return 0; }
 
     private int Unknown(string command)
     {
         logger.LogError("Comando desconocido: {Command}", command);
-        logger.LogInformation("{Text}", Usage);
+        Console.WriteLine(Usage);
         return 1;
     }
 
@@ -128,10 +128,10 @@ internal sealed class GapScoutCommand(
             }
 
             var jobId = backgroundJobs.Enqueue<GapScoutJobs>(job => job.RunScan(normalizedScope, yolo));
-            logger.LogInformation("Encolado: {JobId} (scope: {Scope})", jobId, normalizedScope);
+            Console.WriteLine($"Encolado: {jobId} (scope: {normalizedScope})");
         }
 
-        logger.LogInformation("El job server vive dentro de 'ne2-factory run'; sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
+        Console.WriteLine("El job server vive dentro de 'ne2-factory run'; sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
         return 0;
     }
 
