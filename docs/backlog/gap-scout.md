@@ -2,7 +2,7 @@
 
 `ne2-factory gap-scout scan <scope|all>` queues one background job per scope and returns
 immediately — it doesn't run the scan itself. Those jobs are processed by the job server
-hosted inside `ne2-factory backlog run --yolo`, so that command has to already be running
+hosted inside `ne2-factory run`, so that command has to already be running
 (as its own long-lived process) for a queued scan to actually execute. Jobs persist in a
 SQLite-backed queue (`.backlog/gap-scout.db`), so a scan queued before the worker is up
 still runs once it starts — queueing is safe to call from a systemd timer even if the
@@ -26,7 +26,7 @@ technical safety net if something in the repo's content tried to steer the agent
 
 ## 1. Worker service (long-running)
 
-`ne2-factory backlog run --yolo` has to be running continuously for queued gap-scout jobs
+`ne2-factory run` has to be running continuously for queued gap-scout jobs
 (and backlog tickets) to be processed. Run it as its own long-lived systemd service, not a
 oneshot:
 
@@ -41,7 +41,7 @@ After=network-online.target
 Type=simple
 User=<user>
 WorkingDirectory=/path/to/your-repo
-ExecStart=dotnet run --project /path/to/the/factory/bundle/src/Ne2Factory.Cli -c Release -- backlog run --yolo
+ExecStart=dotnet run --project /path/to/the/factory/bundle/src/Ne2Factory.Cli -c Release -- run
 Restart=on-failure
 # needed if claude/gh aren't on systemd's default PATH:
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/<user>/.local/bin

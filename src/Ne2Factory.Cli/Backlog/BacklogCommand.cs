@@ -1,15 +1,8 @@
 using Microsoft.Extensions.Logging;
-using Ne2Factory.Cli.Agents;
-using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.Backlog;
 
-internal sealed class BacklogCommand(
-    IBacklog backlog,
-    IProcessRunner proc,
-    IAgent agent,
-    IAgentSignalChannel signal,
-    ILogger<BacklogCommand> logger)
+internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> logger)
 {
     public const string QueueLabel = GithubIssuesBacklog.QueueLabel;
     public const string RefinedLabel = GithubIssuesBacklog.RefinedLabel;
@@ -22,22 +15,11 @@ internal sealed class BacklogCommand(
           list               List queued (refined/unrefined split)/done/failed
                                 tickets (GitHub issues).
           requeue <number>   Move a failed/blocked issue back into the queue.
-          run --yolo         Start the worker in the foreground: polls the queue
-                                every 30s (BACKLOG_POLL_INTERVAL to override) and
-                                keeps running, picking up tickets labeled both
-                                "backlog" and "refined" — no need to restart it per
-                                ticket. Also hosts the background job server that
-                                processes `gap-scout scan` jobs queued while it
-                                runs. Stop with Ctrl-C.
-                              --yolo is mandatory: every ticket runs headless via
-                                `claude --print --dangerously-skip-permissions`, so
-                                there is never anyone to answer a prompt — only
-                                run this when you're comfortable leaving it fully
-                                unattended.
 
-        The worker stops (exits) if a ticket ends without a clear done/blocked
-        signal — that needs a human look before resuming; requeue/fix the issue
-        and run `backlog run --yolo` again.
+        This command is purely interactive — it never runs tickets itself. To work
+        the queue unattended, run `ne2-factory run` instead (see `ne2-factory run
+        --help`), which polls every 30s (BACKLOG_POLL_INTERVAL to override) and
+        keeps running, picking up tickets labeled both "backlog" and "refined".
 
         Tickets live as GitHub issues on this repo, not on the local filesystem.
         File new ones directly on GitHub with the "backlog" label — this tool does
@@ -48,14 +30,9 @@ internal sealed class BacklogCommand(
           failed                    open issue,   label "backlog:failed"
 
         Run the `refine-backlog` skill interactively (in a normal `claude` session,
-        not this worker) to turn queued tickets into refined ones before `run`
-        picks them up — that's also the only place in the pipeline where
-        clarifying questions get asked; this worker never asks anything.
-
-        Each refined ticket runs in its own fresh, non-interactive `claude --print`
-        session (the work-ticket skill) with permission prompts skipped entirely,
-        so git commit/push happen straight to the project's default branch with no
-        approval step. Requires `gh` authenticated against this repo.
+        not the worker) to turn queued tickets into refined ones before `ne2-factory
+        run` picks them up — that's also the only place in the pipeline where
+        clarifying questions get asked; the worker never asks anything.
         """;
 
     public int Run(string[] args)
@@ -66,12 +43,6 @@ internal sealed class BacklogCommand(
         {
             case "list": CmdList(); return 0;
             case "requeue": return CmdRequeue(rest);
-            case "run":
-                // Valid usage (`run --yolo`) is intercepted in Program.cs, which starts
-                // the host instead of calling this method — only invalid usage lands here.
-                logger.LogError("Uso: ne2-factory backlog run --yolo");
-                logger.LogInformation("{Text}", Usage);
-                return 1;
             case "-h": case "--help": case "": logger.LogInformation("{Text}", Usage); return 0;
             default:
                 logger.LogError("Comando desconocido: {Command}", command);
@@ -79,8 +50,6 @@ internal sealed class BacklogCommand(
                 return 1;
         }
     }
-
-    public void EnsureLabels() => backlog.EnsureLabels();
 
     private void CmdList()
     {
@@ -112,78 +81,5 @@ internal sealed class BacklogCommand(
         backlog.Requeue(number);
         logger.LogInformation("Reencolado: #{Number}", number);
         return 0;
-    }
-
-    // Processes every currently queued issue once. Returns false if it hit a
-    // condition that needs human review before polling should resume.
-    public bool ProcessQueue()
-    {
-        var issues = backlog.ListRefined()
-            .Select(i => i.Number)
-            .OrderBy(n => n)
-            .ToArray();
-
-        if (issues.Length == 0)
-        {
-            logger.LogInformation("No hay issues por procesar.");
-            return true;
-        }
-
-        logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", issues.Length, string.Join(", ", issues.Select(n => $"#{n}")));
-
-        var seen = 0;
-        foreach (var n in issues)
-        {
-            // Otro proceso pudo haber reencolado/movido el issue entre tanto; re-verifica.
-            var current = backlog.GetItem(n);
-            if (current is null) continue;
-            if (current.State != "OPEN" || !current.Labels.Contains(QueueLabel) || !current.Labels.Contains(RefinedLabel))
-            {
-                logger.LogInformation("Issue #{Number} ya no cumple las condiciones (estado/labels cambiaron); lo salto.", n);
-                continue;
-            }
-
-            logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", n);
-            proc.RunInherited("git", ["pull", "--ff-only"]);
-
-            signal.Reset();
-
-            seen++;
-            logger.LogInformation("Ticket: #{Number} {Title}", n, current.Title);
-            logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", n, current.Url);
-
-            agent.Run(BuildWorkTicketPrompt(current), new AgentOptions { SkipPermissions = true });
-
-            var outcome = signal.Read();
-            if (outcome is null)
-            {
-                logger.LogWarning("-> la sesión terminó sin señal (salida manual/crash). Dejo #{Number} en cola y paro.", n);
-                return false;
-            }
-
-            switch (outcome.Status)
-            {
-                case "done":
-                    backlog.Close(n);
-                    logger.LogInformation("-> hecho: #{Number}", n);
-                    break;
-                case "blocked":
-                    backlog.MarkFailed(n);
-                    logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", n, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", n);
-                    break;
-                default:
-                    logger.LogWarning("-> señal desconocida ('{Status}'), dejo #{Number} en cola para revisión manual.", outcome.Status, n);
-                    return false;
-            }
-        }
-
-        logger.LogInformation("Pasada de cola completada. Vistos: {Seen}/{Total} tickets.", seen, issues.Length);
-        return true;
-    }
-
-    private static string BuildWorkTicketPrompt(BacklogItem item)
-    {
-        var comments = string.Join("\n", item.Comments);
-        return $"/work-ticket\n\nGitHub issue: #{item.Number} ({item.Url})\n\n{item.Title}\n\n{item.Body ?? ""}\n\n{comments}";
     }
 }

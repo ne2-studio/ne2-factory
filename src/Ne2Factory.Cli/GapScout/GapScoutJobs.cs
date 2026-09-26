@@ -6,7 +6,7 @@ namespace Ne2Factory.Cli.GapScout;
 // Hangfire job body — the equivalent of what used to run inside a dedicated
 // tmux window for `bin/gap-scout scan`: spawns one `claude` session running
 // the architecture-gap-scout agent for a single scope. Executes inside the
-// Hangfire server hosted by `backlog run --yolo`, so its stdout/stderr are
+// Hangfire server hosted by `ne2-factory run`, so its stdout/stderr are
 // inherited straight into that same terminal. Instantiated per job by
 // Hangfire's DI-backed job activator (see AddHangfire in Program.cs).
 public sealed class GapScoutJobs(IAgent agent, ILogger<GapScoutJobs> logger)

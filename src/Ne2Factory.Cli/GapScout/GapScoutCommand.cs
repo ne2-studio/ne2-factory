@@ -24,7 +24,7 @@ internal sealed class GapScoutCommand(
                                   (default: app api admin). Returns as soon as the
                                   job(s) are queued; doesn't wait for them to
                                   finish. Jobs are processed by the job server
-                                  hosted inside `backlog run --yolo` — that must be
+                                  hosted inside `ne2-factory run` — that must be
                                   running for queued scans to actually execute.
                                   Jobs persist in a SQLite-backed queue
                                   (.backlog/gap-scout.db), so a scan queued before
@@ -54,7 +54,7 @@ internal sealed class GapScoutCommand(
 
         Filed issues are not queued for execution by themselves. Review one, and
         if you want it done, add the "backlog" label — that hands it to
-        `backlog`'s existing worker, same as any other ticket. Leaving it
+        `ne2-factory run`'s existing worker, same as any other ticket. Leaving it
         unlabeled (or closing it) means "not now"; it won't be re-filed verbatim
         on the next scan.
 
@@ -130,7 +130,7 @@ internal sealed class GapScoutCommand(
             logger.LogInformation("Encolado: {JobId} (scope: {Scope})", jobId, normalizedScope);
         }
 
-        logger.LogInformation("El job server vive dentro de 'backlog run --yolo'; sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
+        logger.LogInformation("El job server vive dentro de 'ne2-factory run'; sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
         return 0;
     }
 

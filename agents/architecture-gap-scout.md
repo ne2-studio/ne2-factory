@@ -10,7 +10,7 @@ model: sonnet
 Produce fresh, non-duplicate architecture initiatives for the scope given in the prompt,
 filed as GitHub issues labeled `gap-scout` for the reviewer to review. This agent runs as
 a background job dispatched by `ne2-factory gap-scout scan`, processed by the job server
-hosted inside `ne2-factory backlog run --yolo`, with no prior context — everything needed
+hosted inside `ne2-factory run`, with no prior context — everything needed
 comes from the prompt and the repository itself. It's usually unattended (`--yolo`); a
 permission prompt it can't resolve has no attached terminal to answer it on, so run this
 agent with `--yolo` unless you plan to watch its output live.
@@ -19,7 +19,7 @@ agent with `--yolo` unless you plan to watch its output live.
 
 Filing an issue is the end of this agent's responsibility. It never approves its own
 findings: approval is the reviewer adding the `backlog` label by hand, which hands the
-issue to `ne2-factory backlog`'s existing worker. This agent must never add that label
+issue to `ne2-factory run`'s existing worker. This agent must never add that label
 itself.
 
 ## Workflow
