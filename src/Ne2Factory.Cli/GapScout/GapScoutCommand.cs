@@ -28,7 +28,7 @@ internal sealed class GapScoutCommand(
                                   hosted inside `ne2-factory run` — that must be
                                   running for queued scans to actually execute.
                                   Jobs persist in a SQLite-backed queue
-                                  (.backlog/gap-scout.db), so a scan queued before
+                                  (.ne2-factory/database.db), so a scan queued before
                                   the worker is up still runs once it starts. Each
                                   job dedupes against already-filed initiatives and
                                   files new ones as GitHub issues (label

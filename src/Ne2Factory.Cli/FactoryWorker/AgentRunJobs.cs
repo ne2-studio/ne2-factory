@@ -79,10 +79,11 @@ internal sealed class AgentRunJobs(
     private static string BuildWorkTicketPrompt(BacklogItem item)
     {
         var comments = string.Join("\n", item.Comments);
+        var reference = item.Url is null ? $"#{item.Number}" : $"#{item.Number} ({item.Url})";
         return $$"""
             /work-ticket
 
-            GitHub issue: #{{item.Number}} ({{item.Url}})
+            Ticket: {{reference}}
 
             {{item.Title}}
 

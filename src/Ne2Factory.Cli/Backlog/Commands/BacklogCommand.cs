@@ -8,22 +8,26 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
 
         Commands:
-          list               List queued (refined/unrefined split)/done/failed
-                                tickets (GitHub issues).
-          requeue <number>   Move a failed/blocked issue back into the queue.
+          list               List queued (refined/unrefined split)/done/failed tickets.
+          requeue <number>   Move a failed/blocked ticket back into the queue
+                                (unrefined).
 
         This command is purely interactive — it never runs tickets itself. To work
         the queue unattended, run `ne2-factory run` instead (see `ne2-factory run
         --help`), which polls every 30s (BACKLOG_POLL_INTERVAL to override) and
-        keeps running, picking up tickets labeled both "backlog" and "refined".
+        keeps running, picking up refined tickets.
 
-        Tickets live as GitHub issues on this repo, not on the local filesystem.
-        File new ones directly on GitHub with the "backlog" label — this tool does
-        not queue tickets itself:
-          queued, not yet refined   open issue,   label "backlog", no "refined"
-          queued, ready             open issue,   labels "backlog" + "refined"
-          done                      closed issue, label "backlog"
-          failed                    open issue,   label "backlog:failed"
+        Tickets don't live on the local filesystem by default — this tool doesn't
+        queue tickets itself, a human files them directly on the backend. Which
+        backend backs the backlog is set via "Backlog:Provider" in appsettings.json
+        ("GitHub", the default, or "File" for plain text files under
+        .ne2-factory/backlog):
+          GitHub  file new tickets as GitHub issues with the "backlog" label;
+                  refined/failed/done are tracked via the "refined" and
+                  "backlog:failed" labels and the issue's open/closed state.
+          File    create a numbered folder under .ne2-factory/backlog (e.g.
+                  .ne2-factory/backlog/42/) containing a ticket.txt with a
+                  "State:"/"Title:" header and the ticket body.
 
         Run the `refine-backlog` skill interactively (in a normal `claude` session,
         not the worker) to turn queued tickets into refined ones before `ne2-factory
@@ -71,7 +75,7 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
         var n = args.Length > 0 ? args[0] : "";
         if (!int.TryParse(n, out var number))
         {
-            logger.LogError("Uso: ne2-factory backlog requeue <número-de-issue>");
+            logger.LogError("Uso: ne2-factory backlog requeue <número-de-ticket>");
             return 1;
         }
         backlog.Requeue(number);

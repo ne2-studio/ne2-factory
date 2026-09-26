@@ -18,7 +18,7 @@ const string TopUsage = """
     Subcommands:
       run         Start the worker in the foreground: polls the backlog queue and
                     hosts the background job server. See `ne2-factory run --help`.
-      backlog     Interactively inspect/manage the GitHub issues backlog. See
+      backlog     Interactively inspect/manage the ticket backlog. See
                     `ne2-factory backlog --help`.
       gap-scout   Scan for architecture gaps and file them as issues. See
                     `ne2-factory gap-scout --help`.
@@ -42,7 +42,8 @@ const string RunUsage = """
     and run `ne2-factory run` again.
 
     Use `ne2-factory backlog` to inspect/manage the queue interactively.
-    Requires `gh` authenticated against this repo.
+    Requires `gh` authenticated against this repo when using the GitHub
+    backlog backend (see `ne2-factory backlog --help`).
     """;
 
 var rootDir = RootDirectoryResolver.Resolve();
@@ -61,17 +62,22 @@ builder.Services.AddSingleton<ProjectContext>();
 builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
 builder.Services.AddSingleton<IAgent, ClaudeAgent>();
 builder.Services.AddSingleton<IGitHubCli, GitHubCli>();
-builder.Services.AddSingleton<IBacklog, GithubIssuesBacklog>();
+builder.Services.AddSingleton<IBacklog>(sp =>
+{
+    var ctx = sp.GetRequiredService<ProjectContext>();
+    return ctx.BacklogProvider.Equals("File", StringComparison.OrdinalIgnoreCase)
+        ? new FileBacklog(ctx)
+        : new GithubIssuesBacklog(sp.GetRequiredService<IGitHubCli>());
+});
 builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
 builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<BacklogQueueProcessor>();
 builder.Services.AddSingleton<GapScoutCommand>();
 builder.Services.AddHostedService<FactoryWorker>();
 
-var backlogDbDir = Path.Combine(rootDir, ".backlog");
-Directory.CreateDirectory(backlogDbDir);
-var factoryDbPath = Path.Combine(backlogDbDir, "gap-scout.db");
-builder.Services.AddHangfire(config => config.UseSQLiteStorage(factoryDbPath));
+var dataDir = ProjectContext.DataDirFor(rootDir);
+Directory.CreateDirectory(dataDir);
+builder.Services.AddHangfire(config => config.UseSQLiteStorage(Path.Combine(dataDir, "database.db")));
 // WorkerCount = 1: AgentRunJobs runs `git pull` + the agent against the same
 // working directory, so jobs must run sequentially, not in parallel.
 builder.Services.AddHangfireServer(options => options.WorkerCount = 1);
