@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.Storage.SQLite;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -53,6 +54,7 @@ Directory.SetCurrentDirectory(rootDir);
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.AddEnvFile(Path.Combine(rootDir, ".ne2-factory.env"));
+builder.Configuration.AddJsonFile(Path.Combine(rootDir, "appsettings.Local.json"), optional: true, reloadOnChange: false);
 
 builder.Services.AddSerilog((sp, loggerConfig) => loggerConfig
     .MinimumLevel.Information()
