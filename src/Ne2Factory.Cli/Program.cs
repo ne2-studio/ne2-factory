@@ -58,6 +58,10 @@ builder.Configuration.AddJsonFile(Path.Combine(rootDir, "appsettings.Local.json"
 
 builder.Services.AddSerilog((sp, loggerConfig) => loggerConfig
     .MinimumLevel.Information()
+    // Hangfire logs at Info are noisy and drown out the worker's own logs.
+    // Bump to Warning by default; lower this back to Information/Debug locally
+    // when Hangfire internals need debugging.
+    .MinimumLevel.Override("Hangfire", Serilog.Events.LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .WriteTo.Console());
 
