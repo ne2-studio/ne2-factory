@@ -1,5 +1,6 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.GapScout;
 
@@ -134,18 +135,6 @@ internal sealed class GapScoutCommand(
         return 0;
     }
 
-    private static bool IsAlreadyQueued(Hangfire.Storage.IMonitoringApi monitoring, string scope)
-    {
-        bool MatchesScope(Hangfire.Common.Job job) =>
-            job.Type == typeof(GapScoutJobs) && job.Args.Count > 0 && (job.Args[0] as string) == scope;
-
-        var enqueued = monitoring.EnqueuedJobs("default", 0, 1000).Any(j => MatchesScope(j.Value.Job));
-        if (enqueued) return true;
-
-        var processing = monitoring.ProcessingJobs(0, 1000).Any(j => MatchesScope(j.Value.Job));
-        if (processing) return true;
-
-        var scheduled = monitoring.ScheduledJobs(0, 1000).Any(j => MatchesScope(j.Value.Job));
-        return scheduled;
-    }
+    private static bool IsAlreadyQueued(Hangfire.Storage.IMonitoringApi monitoring, string scope) =>
+        monitoring.HasJob(job => job.Type == typeof(GapScoutJobs) && job.Args.Count > 0 && (job.Args[0] as string) == scope);
 }

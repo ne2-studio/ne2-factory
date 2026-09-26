@@ -10,7 +10,6 @@ namespace Ne2Factory.Cli.FactoryWorker;
 internal sealed class FactoryWorker(
     BacklogQueueProcessor queueProcessor,
     ProjectContext ctx,
-    IHostApplicationLifetime lifetime,
     ILogger<FactoryWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -22,13 +21,7 @@ internal sealed class FactoryWorker(
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (!queueProcessor.ProcessQueue())
-                {
-                    logger.LogWarning("Worker detenido (revisión manual necesaria antes de reanudar).");
-                    Environment.ExitCode = 1;
-                    lifetime.StopApplication();
-                    return;
-                }
+                queueProcessor.ProcessQueue();
                 logger.LogInformation("Durmiendo {Interval}s antes de volver a comprobar la cola.", ctx.BacklogPollIntervalSeconds);
                 await Task.Delay(TimeSpan.FromSeconds(ctx.BacklogPollIntervalSeconds), stoppingToken);
             }

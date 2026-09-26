@@ -71,7 +71,9 @@ var backlogDbDir = Path.Combine(rootDir, ".backlog");
 Directory.CreateDirectory(backlogDbDir);
 var gapScoutDbPath = Path.Combine(backlogDbDir, "gap-scout.db");
 builder.Services.AddHangfire(config => config.UseSQLiteStorage(gapScoutDbPath));
-builder.Services.AddHangfireServer();
+// WorkerCount = 1: AgentRunJobs runs `git pull` + the agent against the same
+// working directory, so jobs must run sequentially, not in parallel.
+builder.Services.AddHangfireServer(options => options.WorkerCount = 1);
 
 using var host = builder.Build();
 using var scope = host.Services.CreateScope();

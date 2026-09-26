@@ -1,0 +1,88 @@
+using Hangfire;
+using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Agents;
+using Ne2Factory.Cli.Backlog;
+using Ne2Factory.Cli.Services;
+
+namespace Ne2Factory.Cli.FactoryWorker;
+
+// Hangfire job body for a single backlog issue — the equivalent of what used
+// to run inline in BacklogQueueProcessor's foreach before that loop moved to
+// background. Executes inside the Hangfire server hosted by `ne2-factory run`.
+// No automatic retries: an ambiguous outcome needs a human look, not a
+// silent re-run against the same ticket.
+[AutomaticRetry(Attempts = 0)]
+internal sealed class AgentRunJobs(
+    IBacklog backlog,
+    IProcessRunner proc,
+    IAgent agent,
+    ILogger<AgentRunJobs> logger)
+{
+    private const string QueueLabel = GithubIssuesBacklog.QueueLabel;
+    private const string RefinedLabel = GithubIssuesBacklog.RefinedLabel;
+
+    public void Execute(int number)
+    {
+        // Labels may have changed between enqueue and now (another process
+        // requeued/closed the issue in the meantime); re-verify.
+        var current = backlog.GetItem(number);
+        if (current is null || current.State != "OPEN" || !current.Labels.Contains(QueueLabel) || !current.Labels.Contains(RefinedLabel))
+        {
+            logger.LogInformation("Issue #{Number} ya no cumple las condiciones (estado/labels cambiaron); lo salto.", number);
+            return;
+        }
+
+        logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", number);
+        proc.RunInherited("git", ["pull", "--ff-only"]);
+
+        logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
+        logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", number, current.Url);
+
+        var outcome = agent.Run(BuildWorkTicketPrompt(current), new AgentOptions { SkipPermissions = true });
+        if (outcome is null)
+        {
+            logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
+            backlog.MarkFailed(number);
+            return;
+        }
+
+        switch (outcome.Status)
+        {
+            case "done":
+                backlog.Close(number);
+                logger.LogInformation("-> hecho: #{Number}", number);
+                break;
+            case "blocked":
+                backlog.MarkFailed(number);
+                logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", number);
+                break;
+            default:
+                logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", outcome.Status, number);
+                backlog.MarkFailed(number);
+                break;
+        }
+    }
+
+    private static string BuildWorkTicketPrompt(BacklogItem item)
+    {
+        var comments = string.Join("\n", item.Comments);
+        return $$"""
+            /work-ticket
+
+            GitHub issue: #{{item.Number}} ({{item.Url}})
+
+            {{item.Title}}
+
+            {{item.Body ?? ""}}
+
+            {{comments}}
+
+            ---
+            This session is headless: the only way you can report your outcome back is
+            through your final message, so it is parsed programmatically. Your very last
+            message must be nothing but a single JSON object — no markdown code fences, no
+            text before or after it — with this exact shape:
+            {"status": "done" | "blocked", "reason": "<empty string if done, short explanation if blocked>"}
+            """;
+    }
+}
