@@ -26,7 +26,7 @@ formatted. Read them per the `read-github-ticket` skill — including resolving 
 embedded images before proceeding. Inspect the codebase, the documentation paths listed
 in `.ne2-factory/project.md`, and existing code before assuming intent.
 
-This ticket already went through the `refine-backlog` session (it's only queued here once
+This ticket already went through the `refine-ticket` session (it's only queued here once
 labeled `refined`), so it should be implementation-ready. This session is unattended —
 there is no live reviewer to interrupt, so never ask a question here. If it still turns out
 to be genuinely ambiguous or contradictory in a way that materially affects product
@@ -47,7 +47,7 @@ owns reproducing/implementing, testing, and getting its own diff verified throug
 
 If it returns `BLOCKED: REQUIREMENT_AMBIGUITY`, do not attempt to resolve it yourself —
 proceed to step 6 as blocked, including its question in the reason, so the ticket can go
-back through `refine-backlog`.
+back through `refine-ticket`.
 
 ### 3. Confirm the handoff
 

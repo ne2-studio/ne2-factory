@@ -1,19 +1,24 @@
 using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Agents;
 
 namespace Ne2Factory.Cli.Backlog;
 
-internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> logger)
+internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<BacklogCommand> logger)
 {
     private const string Usage = """
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
 
         Commands:
           list               List queued (refined/unrefined split)/done/failed tickets.
+          refine [--all]     Refine the next unrefined ticket interactively (or, with
+                                --all, every unrefined ticket in sequence). See below.
           requeue <number>   Move a failed/blocked ticket back into the queue
                                 (unrefined).
 
-        This command is purely interactive — it never runs tickets itself. To work
-        the queue unattended, run `ne2-factory run` instead (see `ne2-factory run
+        `list` and `requeue` are purely inspection/bookkeeping — they never run
+        tickets. `refine` hands the terminal to an interactive `claude` session per
+        ticket, so it can ask the reviewer questions live. Neither runs tickets
+        unattended; for that, run `ne2-factory run` instead (see `ne2-factory run
         --help`), which polls every 30s (BACKLOG_POLL_INTERVAL to override) and
         keeps running, picking up refined tickets.
 
@@ -29,10 +34,12 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
                   .ne2-factory/backlog/42/) containing a ticket.txt with a
                   "State:"/"Title:" header and the ticket body.
 
-        Run the `refine-backlog` skill interactively (in a normal `claude` session,
-        not the worker) to turn queued tickets into refined ones before `ne2-factory
-        run` picks them up — that's also the only place in the pipeline where
-        clarifying questions get asked; the worker never asks anything.
+        `ne2-factory backlog refine` launches one interactive `claude` session per
+        ticket (fresh context each time), using the `refine-ticket` skill, to turn
+        queued tickets into refined ones before `ne2-factory run` picks them up —
+        that's the only place in the pipeline where clarifying questions get asked;
+        the worker never asks anything. Ctrl-C at any point is safe: whatever wasn't
+        refined yet stays queued as unrefined for the next `backlog refine` run.
         """;
 
     public int Run(string[] args)
@@ -42,6 +49,7 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
         switch (command)
         {
             case "list": CmdList(); return 0;
+            case "refine": return CmdRefine(rest);
             case "requeue": return CmdRequeue(rest);
             case "-h": case "--help": case "": logger.LogInformation("{Text}", Usage); return 0;
             default:
@@ -68,6 +76,67 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
         logger.LogInformation("Fallidos/bloqueados:");
         foreach (var item in backlog.ListFailed())
             logger.LogInformation("  #{Number}  {Title}", item.Number, item.Title);
+    }
+
+    // Refines one ticket per interactive `claude` session (fresh context each
+    // time), re-checking the backlog after each session so state always comes
+    // from GitHub/the file backend rather than something we track ourselves.
+    // If a session exits without the ticket actually turning refined (Ctrl-C,
+    // crash, reviewer bailed), we stop instead of looping on the same ticket.
+    private int CmdRefine(string[] args)
+    {
+        var all = args.Contains("--all");
+
+        while (true)
+        {
+            var next = backlog.ListUnrefined().OrderBy(i => i.Number).FirstOrDefault();
+            if (next is null)
+            {
+                logger.LogInformation("No hay tickets pendientes de refinamiento.");
+                return 0;
+            }
+
+            var item = backlog.GetItem(next.Number);
+            if (item is null)
+            {
+                logger.LogWarning("#{Number} ya no existe; lo salto.", next.Number);
+                if (!all) return 1;
+                continue;
+            }
+
+            logger.LogInformation("Refinando #{Number} — {Title}", item.Number, item.Title);
+            agent.RunInteractive(BuildRefinePrompt(item));
+
+            var refined = backlog.GetItem(next.Number)?.State == TicketState.Refined;
+            if (!refined)
+            {
+                logger.LogWarning("#{Number} sigue sin refinar; me detengo aquí.", next.Number);
+                return 1;
+            }
+
+            logger.LogInformation("#{Number} refinado.", next.Number);
+            if (!all) return 0;
+        }
+    }
+
+    // Hands the skill everything it needs to know about the ticket up front —
+    // mirrors AgentRunJobs.BuildWorkTicketPrompt — so refine-ticket never has
+    // to know GitHub exists; only this class and IBacklog do.
+    private static string BuildRefinePrompt(BacklogItem item)
+    {
+        var comments = string.Join("\n", item.Comments);
+        var reference = item.Url is null ? $"#{item.Number}" : $"#{item.Number} ({item.Url})";
+        return $$"""
+            /refine-ticket
+
+            Ticket: {{reference}}
+
+            {{item.Title}}
+
+            {{item.Body ?? ""}}
+
+            {{comments}}
+            """;
     }
 
     private int CmdRequeue(string[] args)

@@ -32,6 +32,8 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         return ParseSignal(stdout);
     }
 
+    public void RunInteractive(string prompt) => proc.RunInherited("claude", [prompt]);
+
     // The prompt tells the agent its final message must be nothing but a JSON
     // object; take the last brace-delimited chunk of stdout as that message.
     private static AgentSignal? ParseSignal(string stdout)
