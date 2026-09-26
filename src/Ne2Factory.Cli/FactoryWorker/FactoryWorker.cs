@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Ne2Factory.Cli.Backlog;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
@@ -15,7 +14,7 @@ internal sealed class FactoryWorker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Servidor de jobs en background arrancado ({DbPath}).", ctx.FactoryDbPath);
-        logger.LogInformation("Escuchando issues con label '{QueueLabel}' (cada {Interval}s). Ctrl-C para parar.", GithubIssuesBacklog.QueueLabel, ctx.BacklogPollIntervalSeconds);
+        logger.LogInformation("Escuchando tickets refinados en el backlog (cada {Interval}s). Ctrl-C para parar.", ctx.BacklogPollIntervalSeconds);
 
         try
         {

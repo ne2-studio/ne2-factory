@@ -4,10 +4,6 @@ namespace Ne2Factory.Cli.Backlog;
 
 internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> logger)
 {
-    public const string QueueLabel = GithubIssuesBacklog.QueueLabel;
-    public const string RefinedLabel = GithubIssuesBacklog.RefinedLabel;
-    public const string FailedLabel = GithubIssuesBacklog.FailedLabel;
-
     private const string Usage = """
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
 

@@ -2,13 +2,24 @@ using Ne2Factory.Cli;
 
 namespace Ne2Factory.Cli.Backlog;
 
+// A ticket's state as the factory understands it. Computed from whatever the
+// concrete IBacklog implementation uses internally (GitHub labels, for
+// GithubIssuesBacklog) — the factory domain never sees labels directly.
+internal enum TicketState
+{
+    Unrefined,
+    Refined,
+    Failed,
+    Done,
+    Unknown,
+}
+
 internal sealed record BacklogItem(
     int Number,
     string Title,
     string? Body,
     string? Url,
-    string? State,
-    IReadOnlySet<string> Labels,
+    TicketState State,
     IReadOnlyList<string> Comments);
 
 internal interface IBacklog
@@ -26,12 +37,13 @@ internal interface IBacklog
 
 // Backs the backlog with GitHub issues: queue state lives in labels, ticket
 // context comes from the issue body/comments. Only place that maps
-// IGitHubCli's issue shape onto the backlog domain.
+// IGitHubCli's issue shape onto the backlog domain — and the only place that
+// knows about labels at all; everything else works with TicketState.
 internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
 {
-    public const string QueueLabel = "backlog";
-    public const string RefinedLabel = "refined";
-    public const string FailedLabel = "backlog:failed";
+    private const string QueueLabel = "backlog";
+    private const string RefinedLabel = "refined";
+    private const string FailedLabel = "backlog:failed";
 
     public void EnsureLabels()
     {
@@ -43,22 +55,22 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
     public IReadOnlyList<BacklogItem> ListUnrefined() =>
         gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels")
             .Where(i => i.Labels?.Any(l => l.Name == RefinedLabel) != true)
-            .Select(ToBacklogItem)
+            .Select(i => ToBacklogItem(i, TicketState.Unrefined))
             .ToArray();
 
     public IReadOnlyList<BacklogItem> ListRefined() =>
         gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number,title")
-            .Select(ToBacklogItem)
+            .Select(i => ToBacklogItem(i, TicketState.Refined))
             .ToArray();
 
     public IReadOnlyList<BacklogItem> ListDone() =>
         gitHubCli.ListIssues([QueueLabel], "closed", "number,title")
-            .Select(ToBacklogItem)
+            .Select(i => ToBacklogItem(i, TicketState.Done))
             .ToArray();
 
     public IReadOnlyList<BacklogItem> ListFailed() =>
         gitHubCli.ListIssues([FailedLabel], "open", "number,title")
-            .Select(ToBacklogItem)
+            .Select(i => ToBacklogItem(i, TicketState.Failed))
             .ToArray();
 
     public BacklogItem? GetItem(int number)
@@ -70,13 +82,13 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
             .Select(c => $"-- comment by {c.Author.Login} ({c.CreatedAt}) --\n{c.Body}")
             .ToArray();
 
+        var labels = issue.Labels?.Select(l => l.Name).ToHashSet() ?? new HashSet<string>();
         return new BacklogItem(
             number,
             issue.Title,
             issue.Body,
             issue.Url,
-            issue.State,
-            issue.Labels?.Select(l => l.Name).ToHashSet() ?? new HashSet<string>(),
+            ToTicketState(issue.State, labels),
             comments);
     }
 
@@ -86,6 +98,24 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
 
     public void MarkFailed(int number) => gitHubCli.EditIssueLabels(number, QueueLabel, FailedLabel);
 
-    private static BacklogItem ToBacklogItem(IssueSummary i) =>
-        new(i.Number, i.Title, null, null, null, i.Labels?.Select(l => l.Name).ToHashSet() ?? new HashSet<string>(), []);
+    private static BacklogItem ToBacklogItem(IssueSummary i, TicketState state) =>
+        new(i.Number, i.Title, null, null, state, []);
+
+    // Mirrors the label combinations the List* methods above filter by, for
+    // issues fetched individually (GetItem) where the state isn't already
+    // known from the query that produced them.
+    private static TicketState ToTicketState(string? issueState, IReadOnlySet<string> labels)
+    {
+        var queued = labels.Contains(QueueLabel);
+        if (string.Equals(issueState, "closed", StringComparison.OrdinalIgnoreCase))
+            return queued ? TicketState.Done : TicketState.Unknown;
+
+        if (!string.Equals(issueState, "open", StringComparison.OrdinalIgnoreCase))
+            return TicketState.Unknown;
+
+        if (labels.Contains(FailedLabel)) return TicketState.Failed;
+        if (queued && labels.Contains(RefinedLabel)) return TicketState.Refined;
+        if (queued) return TicketState.Unrefined;
+        return TicketState.Unknown;
+    }
 }

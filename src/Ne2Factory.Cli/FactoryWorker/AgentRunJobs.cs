@@ -19,9 +19,6 @@ internal sealed class AgentRunJobs(
     IAgent agent,
     ILogger<AgentRunJobs> logger)
 {
-    private const string QueueLabel = GithubIssuesBacklog.QueueLabel;
-    private const string RefinedLabel = GithubIssuesBacklog.RefinedLabel;
-
     public void Execute(Guid runId)
     {
         var run = runs.Get(runId);
@@ -34,13 +31,13 @@ internal sealed class AgentRunJobs(
         runs.MarkRunning(runId);
         var number = run.IssueNumber;
 
-        // Labels may have changed between enqueue and now (another process
-        // requeued/closed the issue in the meantime); re-verify.
+        // The ticket's state may have changed between enqueue and now (another
+        // process requeued/closed the issue in the meantime); re-verify.
         var current = backlog.GetItem(number);
-        if (current is null || current.State != "OPEN" || !current.Labels.Contains(QueueLabel) || !current.Labels.Contains(RefinedLabel))
+        if (current is null || current.State != TicketState.Refined)
         {
-            logger.LogInformation("Issue #{Number} ya no cumple las condiciones (estado/labels cambiaron); lo salto.", number);
-            runs.Finish(runId, AgentRunStatus.Cancelled, outcome: null, error: "Issue ya no elegible (estado/labels cambiaron).");
+            logger.LogInformation("Issue #{Number} ya no cumple las condiciones (su estado cambió); lo salto.", number);
+            runs.Finish(runId, AgentRunStatus.Cancelled, outcome: null, error: "Issue ya no elegible (su estado cambió).");
             return;
         }
 
