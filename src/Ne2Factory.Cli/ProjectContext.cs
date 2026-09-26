@@ -8,7 +8,6 @@ internal sealed class ProjectContext(RootDirectory rootDirectory, IConfiguration
 {
     public string RootDir { get; } = rootDirectory.Path;
     public string BacklogDir { get; } = Path.Combine(rootDirectory.Path, ".backlog");
-    public string SignalFile { get; } = Path.Combine(rootDirectory.Path, ".backlog", ".signal");
     public string GapScoutDbPath { get; } = Path.Combine(rootDirectory.Path, ".backlog", "gap-scout.db");
 
     // Kept only as the label for GAP_SCOUT job dedup logging; tmux itself is gone.

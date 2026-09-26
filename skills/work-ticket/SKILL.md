@@ -79,25 +79,19 @@ the outcome is visible on the issue itself, not just in a session no one will at
 
 Post this before signaling completion (step 6).
 
-### 6. Signal completion
+### 6. Report the outcome
 
-This is the last thing you do, right before your final message. The orchestrator has no
-other way to know the outcome — it only reads `.backlog/.signal` after this headless
-session exits on its own.
+This is the last thing you do. Your outcome is one of:
 
-- On success (committed and pushed):
-  ```bash
-  mkdir -p .backlog && printf 'status=done\n' > .backlog/.signal
-  ```
-- If genuinely blocked (an agent reported `BLOCKED: REQUIREMENT_AMBIGUITY`, verification
-  cannot be made to pass, ticket describes something out of scope for this repo, etc.) —
-  explain why in your final message, then:
-  ```bash
-  mkdir -p .backlog && printf 'status=blocked\nreason=%s\n' "<short reason>" > .backlog/.signal
-  ```
+- **done** — the work is committed and pushed.
+- **blocked** — an agent reported `BLOCKED: REQUIREMENT_AMBIGUITY`, verification cannot be
+  made to pass, the ticket describes something out of scope for this repo, etc. Include a
+  short reason.
 
-Do not write the signal file until the work is actually committed+pushed or you have
-truly given up.
+Do not report `done` until the work is actually committed and pushed, and don't report
+`blocked` until you have truly given up. How to format this outcome in your final message
+is given to you by the prompt that invoked this skill — follow that format exactly; this
+skill has no say in it.
 
 ## Constraints
 

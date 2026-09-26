@@ -1,12 +1,15 @@
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.Agents;
 
-// Only place that knows how to invoke the `claude` binary: builds its flags
-// and hands off execution to IProcessRunner.
-internal sealed class ClaudeAgent(IProcessRunner proc) : IAgent
+// Only place that knows how to invoke the `claude` binary: builds its flags,
+// hands off execution to IProcessRunner, and parses the JSON outcome the
+// prompt instructed the agent to report as its final message.
+internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logger) : IAgent
 {
-    public int Run(string prompt, AgentOptions options)
+    public AgentSignal? Run(string prompt, AgentOptions options)
     {
         var args = new List<string> { "--print" };
 
@@ -19,6 +22,35 @@ internal sealed class ClaudeAgent(IProcessRunner proc) : IAgent
         }
 
         args.Add(prompt);
-        return proc.RunInherited("claude", args);
+
+        var (stdout, stderr, _) = proc.Capture("claude", args);
+
+        logger.LogInformation("{Transcript}", stdout);
+        if (!string.IsNullOrWhiteSpace(stderr))
+            logger.LogWarning("{Stderr}", stderr);
+
+        return ParseSignal(stdout);
+    }
+
+    // The prompt tells the agent its final message must be nothing but a JSON
+    // object; take the last brace-delimited chunk of stdout as that message.
+    private static AgentSignal? ParseSignal(string stdout)
+    {
+        var start = stdout.LastIndexOf('{');
+        var end = stdout.LastIndexOf('}');
+        if (start < 0 || end < start) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(stdout[start..(end + 1)]);
+            var root = doc.RootElement;
+            var status = root.TryGetProperty("status", out var s) ? s.GetString() : null;
+            var reason = root.TryGetProperty("reason", out var r) ? r.GetString() : null;
+            return new AgentSignal(status, reason);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

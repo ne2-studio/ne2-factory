@@ -11,7 +11,6 @@ internal sealed class BacklogQueueProcessor(
     IBacklog backlog,
     IProcessRunner proc,
     IAgent agent,
-    IAgentSignalChannel signal,
     ILogger<BacklogQueueProcessor> logger)
 {
     private const string QueueLabel = GithubIssuesBacklog.QueueLabel;
@@ -49,18 +48,14 @@ internal sealed class BacklogQueueProcessor(
             logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", n);
             proc.RunInherited("git", ["pull", "--ff-only"]);
 
-            signal.Reset();
-
             seen++;
             logger.LogInformation("Ticket: #{Number} {Title}", n, current.Title);
             logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", n, current.Url);
 
-            agent.Run(BuildWorkTicketPrompt(current), new AgentOptions { SkipPermissions = true });
-
-            var outcome = signal.Read();
+            var outcome = agent.Run(BuildWorkTicketPrompt(current), new AgentOptions { SkipPermissions = true });
             if (outcome is null)
             {
-                logger.LogWarning("-> la sesión terminó sin señal (salida manual/crash). Dejo #{Number} en cola y paro.", n);
+                logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Dejo #{Number} en cola y paro.", n);
                 return false;
             }
 
@@ -75,7 +70,7 @@ internal sealed class BacklogQueueProcessor(
                     logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", n, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", n);
                     break;
                 default:
-                    logger.LogWarning("-> señal desconocida ('{Status}'), dejo #{Number} en cola para revisión manual.", outcome.Status, n);
+                    logger.LogWarning("-> resultado desconocido ('{Status}'), dejo #{Number} en cola para revisión manual.", outcome.Status, n);
                     return false;
             }
         }
@@ -87,6 +82,23 @@ internal sealed class BacklogQueueProcessor(
     private static string BuildWorkTicketPrompt(BacklogItem item)
     {
         var comments = string.Join("\n", item.Comments);
-        return $"/work-ticket\n\nGitHub issue: #{item.Number} ({item.Url})\n\n{item.Title}\n\n{item.Body ?? ""}\n\n{comments}";
+        return $$"""
+            /work-ticket
+
+            GitHub issue: #{{item.Number}} ({{item.Url}})
+
+            {{item.Title}}
+
+            {{item.Body ?? ""}}
+
+            {{comments}}
+
+            ---
+            This session is headless: the only way you can report your outcome back is
+            through your final message, so it is parsed programmatically. Your very last
+            message must be nothing but a single JSON object — no markdown code fences, no
+            text before or after it — with this exact shape:
+            {"status": "done" | "blocked", "reason": "<empty string if done, short explanation if blocked>"}
+            """;
     }
 }
