@@ -49,6 +49,9 @@ internal interface IAgentRunRepository
     AgentRun? Get(Guid id);
     void MarkRunning(Guid id);
     void Finish(Guid id, AgentRunStatus status, string? outcome, string? error);
+
+    // Most recent runs first, for observability (`ne2-factory runs`).
+    IReadOnlyList<AgentRun> ListRecent(int limit);
 }
 
 internal sealed class SqliteAgentRunRepository : IAgentRunRepository
@@ -118,5 +121,14 @@ internal sealed class SqliteAgentRunRepository : IAgentRunRepository
             connection.Execute(
                 "UPDATE AgentRuns SET Status = ?, Outcome = ?, Error = ?, FinishedAt = ? WHERE Id = ?",
                 status.ToString(), outcome, error, DateTime.UtcNow, id);
+    }
+
+    public IReadOnlyList<AgentRun> ListRecent(int limit)
+    {
+        lock (gate)
+            return connection.Table<AgentRun>()
+                .OrderByDescending(r => r.QueuedAt)
+                .Take(limit)
+                .ToList();
     }
 }

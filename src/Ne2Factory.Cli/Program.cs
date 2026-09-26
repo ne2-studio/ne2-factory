@@ -13,13 +13,15 @@ using Ne2Factory.Cli.Services;
 using Serilog;
 
 const string TopUsage = """
-    Usage: ne2-factory <run|backlog|gap-scout> ...
+    Usage: ne2-factory <run|backlog|runs|gap-scout> ...
 
     Subcommands:
       run         Start the worker in the foreground: polls the backlog queue and
                     hosts the background job server. See `ne2-factory run --help`.
       backlog     Interactively inspect/manage the ticket backlog. See
                     `ne2-factory backlog --help`.
+      runs        List recent AgentRuns for observability. See
+                    `ne2-factory runs --help`.
       gap-scout   Scan for architecture gaps and file them as issues. See
                     `ne2-factory gap-scout --help`.
     """;
@@ -71,6 +73,7 @@ builder.Services.AddSingleton<IBacklog>(sp =>
 });
 builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
 builder.Services.AddSingleton<BacklogCommand>();
+builder.Services.AddSingleton<RunsCommand>();
 builder.Services.AddSingleton<BacklogQueueProcessor>();
 builder.Services.AddSingleton<GapScoutCommand>();
 builder.Services.AddHostedService<FactoryWorker>();
@@ -108,6 +111,8 @@ switch (args[0])
         return Environment.ExitCode;
     case "backlog":
         return services.GetRequiredService<BacklogCommand>().Run(rest);
+    case "runs":
+        return services.GetRequiredService<RunsCommand>().Run(rest);
     case "gap-scout":
         return services.GetRequiredService<GapScoutCommand>().Run(rest);
     case "-h" or "--help":
