@@ -14,7 +14,7 @@ internal sealed class FactoryWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Servidor de jobs en background arrancado (gap-scout scan usa {DbPath}).", ctx.GapScoutDbPath);
+        logger.LogInformation("Servidor de jobs en background arrancado ({DbPath}).", ctx.FactoryDbPath);
         logger.LogInformation("Escuchando issues con label '{QueueLabel}' (cada {Interval}s). Ctrl-C para parar.", GithubIssuesBacklog.QueueLabel, ctx.BacklogPollIntervalSeconds);
 
         try

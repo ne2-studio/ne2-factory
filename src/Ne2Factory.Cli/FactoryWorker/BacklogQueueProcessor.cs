@@ -1,7 +1,6 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Backlog;
-using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
@@ -12,10 +11,12 @@ namespace Ne2Factory.Cli.FactoryWorker;
 // on Hangfire's background job server.
 internal sealed class BacklogQueueProcessor(
     IBacklog backlog,
+    IAgentRunRepository runs,
     IBackgroundJobClient backgroundJobs,
-    JobStorage jobStorage,
     ILogger<BacklogQueueProcessor> logger)
 {
+    private const string WorkTicketAgent = "work-ticket";
+
     public void ProcessQueue()
     {
         var issues = backlog.ListRefined()
@@ -37,14 +38,15 @@ internal sealed class BacklogQueueProcessor(
 
     private void TryEnqueue(int issueNumber)
     {
-        var monitoring = jobStorage.GetMonitoringApi();
-        if (monitoring.HasJob(job => job.Type == typeof(AgentRunJobs) && job.Args.Count > 0 && job.Args[0] is int n && n == issueNumber))
+        var run = runs.TryCreateQueued(issueNumber, WorkTicketAgent);
+        if (run is null)
         {
-            logger.LogDebug("Issue #{Number} ya tiene un run encolado o en curso; lo salto.", issueNumber);
+            logger.LogDebug("Issue #{Number} ya tiene un run activo (queued/running); lo salto.", issueNumber);
             return;
         }
 
-        var jobId = backgroundJobs.Enqueue<AgentRunJobs>(job => job.Execute(issueNumber));
-        logger.LogInformation("Encolado: {JobId} (issue #{Number})", jobId, issueNumber);
+        var jobId = backgroundJobs.Enqueue<AgentRunJobs>(job => job.Execute(run.Id));
+        runs.SetHangfireJobId(run.Id, jobId);
+        logger.LogInformation("Encolado: {JobId} (issue #{Number}, run {RunId}).", jobId, issueNumber, run.Id);
     }
 }

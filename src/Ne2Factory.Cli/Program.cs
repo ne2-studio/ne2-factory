@@ -62,6 +62,7 @@ builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
 builder.Services.AddSingleton<IAgent, ClaudeAgent>();
 builder.Services.AddSingleton<IGitHubCli, GitHubCli>();
 builder.Services.AddSingleton<IBacklog, GithubIssuesBacklog>();
+builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
 builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<BacklogQueueProcessor>();
 builder.Services.AddSingleton<GapScoutCommand>();
@@ -69,8 +70,8 @@ builder.Services.AddHostedService<FactoryWorker>();
 
 var backlogDbDir = Path.Combine(rootDir, ".backlog");
 Directory.CreateDirectory(backlogDbDir);
-var gapScoutDbPath = Path.Combine(backlogDbDir, "gap-scout.db");
-builder.Services.AddHangfire(config => config.UseSQLiteStorage(gapScoutDbPath));
+var factoryDbPath = Path.Combine(backlogDbDir, "gap-scout.db");
+builder.Services.AddHangfire(config => config.UseSQLiteStorage(factoryDbPath));
 // WorkerCount = 1: AgentRunJobs runs `git pull` + the agent against the same
 // working directory, so jobs must run sequentially, not in parallel.
 builder.Services.AddHangfireServer(options => options.WorkerCount = 1);

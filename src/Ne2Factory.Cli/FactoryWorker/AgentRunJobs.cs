@@ -6,14 +6,15 @@ using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
-// Hangfire job body for a single backlog issue — the equivalent of what used
-// to run inline in BacklogQueueProcessor's foreach before that loop moved to
+// Hangfire job body for a single AgentRun — the equivalent of what used to
+// run inline in BacklogQueueProcessor's foreach before that loop moved to
 // background. Executes inside the Hangfire server hosted by `ne2-factory run`.
 // No automatic retries: an ambiguous outcome needs a human look, not a
 // silent re-run against the same ticket.
 [AutomaticRetry(Attempts = 0)]
 internal sealed class AgentRunJobs(
     IBacklog backlog,
+    IAgentRunRepository runs,
     IProcessRunner proc,
     IAgent agent,
     ILogger<AgentRunJobs> logger)
@@ -21,14 +22,25 @@ internal sealed class AgentRunJobs(
     private const string QueueLabel = GithubIssuesBacklog.QueueLabel;
     private const string RefinedLabel = GithubIssuesBacklog.RefinedLabel;
 
-    public void Execute(int number)
+    public void Execute(Guid runId)
     {
+        var run = runs.Get(runId);
+        if (run is null)
+        {
+            logger.LogWarning("AgentRun {RunId} no existe; lo salto.", runId);
+            return;
+        }
+
+        runs.MarkRunning(runId);
+        var number = run.IssueNumber;
+
         // Labels may have changed between enqueue and now (another process
         // requeued/closed the issue in the meantime); re-verify.
         var current = backlog.GetItem(number);
         if (current is null || current.State != "OPEN" || !current.Labels.Contains(QueueLabel) || !current.Labels.Contains(RefinedLabel))
         {
             logger.LogInformation("Issue #{Number} ya no cumple las condiciones (estado/labels cambiaron); lo salto.", number);
+            runs.Finish(runId, AgentRunStatus.Cancelled, outcome: null, error: "Issue ya no elegible (estado/labels cambiaron).");
             return;
         }
 
@@ -43,6 +55,7 @@ internal sealed class AgentRunJobs(
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
             backlog.MarkFailed(number);
+            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: "Sesión sin resultado interpretable.");
             return;
         }
 
@@ -50,15 +63,18 @@ internal sealed class AgentRunJobs(
         {
             case "done":
                 backlog.Close(number);
+                runs.Finish(runId, AgentRunStatus.Succeeded, outcome.Status, error: null);
                 logger.LogInformation("-> hecho: #{Number}", number);
                 break;
             case "blocked":
                 backlog.MarkFailed(number);
+                runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, outcome.Reason);
                 logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", number);
                 break;
             default:
                 logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", outcome.Status, number);
                 backlog.MarkFailed(number);
+                runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, error: $"Resultado desconocido: {outcome.Status}");
                 break;
         }
     }
