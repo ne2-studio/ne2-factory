@@ -2,39 +2,6 @@ using Ne2Factory.Cli;
 
 namespace Ne2Factory.Cli.Backlog;
 
-// A ticket's state as the factory understands it. Computed from whatever the
-// concrete IBacklog implementation uses internally (GitHub labels, for
-// GithubIssuesBacklog) — the factory domain never sees labels directly.
-internal enum TicketState
-{
-    Unrefined,
-    Refined,
-    Failed,
-    Done,
-    Unknown,
-}
-
-internal sealed record BacklogItem(
-    int Number,
-    string Title,
-    string? Body,
-    string? Url,
-    TicketState State,
-    IReadOnlyList<string> Comments);
-
-internal interface IBacklog
-{
-    void EnsureLabels();
-    IReadOnlyList<BacklogItem> ListUnrefined();
-    IReadOnlyList<BacklogItem> ListRefined();
-    IReadOnlyList<BacklogItem> ListDone();
-    IReadOnlyList<BacklogItem> ListFailed();
-    BacklogItem? GetItem(int number);
-    void Requeue(int number);
-    void Close(int number);
-    void MarkFailed(int number);
-}
-
 // Backs the backlog with GitHub issues: queue state lives in labels, ticket
 // context comes from the issue body/comments. Only place that maps
 // IGitHubCli's issue shape onto the backlog domain — and the only place that
