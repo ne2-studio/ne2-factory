@@ -11,7 +11,7 @@ public class AgentRunJobsTests
     private const int IssueNumber = 42;
 
     private readonly FakeBacklog _backlog = new();
-    private readonly FakeAgentRunRepository _runs = new();
+    private readonly InMemoryAgentRunRepository _runs = new();
     private readonly FakeProcessRunner _proc = new();
     private readonly FakeAgent _agent = new();
     private readonly AgentRunJobs _sut;
@@ -38,8 +38,6 @@ public class AgentRunJobsTests
     {
         _sut.Execute(Guid.NewGuid());
 
-        Assert.Empty(_runs.MarkRunningCalls);
-        Assert.Empty(_runs.FinishCalls);
         Assert.Empty(_backlog.GetItemCalls);
     }
 
@@ -52,11 +50,11 @@ public class AgentRunJobsTests
 
         _sut.Execute(run.Id);
 
-        Assert.Single(_runs.MarkRunningCalls);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Cancelled, finish.Status);
-        Assert.Null(finish.Outcome);
-        Assert.NotNull(finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.NotNull(finished.StartedAt);
+        Assert.Equal(AgentRunStatus.Cancelled, finished.Status);
+        Assert.Null(finished.Outcome);
+        Assert.NotNull(finished.Error);
         Assert.Empty(_proc.RunInheritedCalls);
         Assert.Empty(_agent.RunCalls);
     }
@@ -70,9 +68,9 @@ public class AgentRunJobsTests
 
         _sut.Execute(run.Id);
 
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Equal("gh no disponible", finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Equal("gh no disponible", finished.Error);
         Assert.Empty(_proc.RunInheritedCalls);
     }
 
@@ -86,9 +84,9 @@ public class AgentRunJobsTests
 
         _sut.Execute(run.Id);
 
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Contains("1", finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Contains("1", finished.Error);
         Assert.Empty(_agent.RunCalls);
     }
 
@@ -103,9 +101,9 @@ public class AgentRunJobsTests
         _sut.Execute(run.Id);
 
         Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Null(finish.Outcome);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Null(finished.Outcome);
     }
 
     [Fact]
@@ -120,10 +118,10 @@ public class AgentRunJobsTests
 
         Assert.Equal([IssueNumber], _backlog.ClosedNumbers);
         Assert.Single(_backlog.Comments);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Succeeded, finish.Status);
-        Assert.Equal("done", finish.Outcome);
-        Assert.Null(finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
+        Assert.Equal("done", finished.Outcome);
+        Assert.Null(finished.Error);
     }
 
     [Fact]
@@ -137,9 +135,9 @@ public class AgentRunJobsTests
 
         _sut.Execute(run.Id);
 
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Equal("gh close falló", finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Equal("gh close falló", finished.Error);
     }
 
     [Fact]
@@ -153,10 +151,10 @@ public class AgentRunJobsTests
         _sut.Execute(run.Id);
 
         Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Equal("blocked", finish.Outcome);
-        Assert.Equal("falta acceso", finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Equal("blocked", finished.Outcome);
+        Assert.Equal("falta acceso", finished.Error);
     }
 
     [Fact]
@@ -170,9 +168,9 @@ public class AgentRunJobsTests
         _sut.Execute(run.Id);
 
         Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Contains("weird", finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Contains("weird", finished.Error);
     }
 
     [Fact]
@@ -186,9 +184,9 @@ public class AgentRunJobsTests
         _sut.Execute(run.Id);
 
         Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Null(finish.Outcome);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Null(finished.Outcome);
     }
 
     [Fact]
@@ -203,9 +201,9 @@ public class AgentRunJobsTests
 
         Assert.Equal([IssueNumber], _backlog.MarkRefinedNumbers);
         Assert.Empty(_backlog.MarkMissingDataNumbers);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Succeeded, finish.Status);
-        Assert.Equal("ready", finish.Outcome);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
+        Assert.Equal("ready", finished.Outcome);
     }
 
     [Fact]
@@ -225,9 +223,9 @@ public class AgentRunJobsTests
 
         Assert.Equal([IssueNumber], _backlog.MarkMissingDataNumbers);
         Assert.Empty(_backlog.MarkRefinedNumbers);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Succeeded, finish.Status);
-        Assert.Equal("missing_data", finish.Outcome);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
+        Assert.Equal("missing_data", finished.Outcome);
     }
 
     [Fact]
@@ -241,9 +239,9 @@ public class AgentRunJobsTests
 
         _sut.Execute(run.Id);
 
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Equal("gh label falló", finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Equal("gh label falló", finished.Error);
     }
 
     [Fact]
@@ -258,8 +256,8 @@ public class AgentRunJobsTests
         _sut.Execute(run.Id);
 
         Assert.Empty(_backlog.MarkRefinedNumbers);
-        var finish = Assert.Single(_runs.FinishCalls);
-        Assert.Equal(AgentRunStatus.Failed, finish.Status);
-        Assert.Equal("gh comment falló", finish.Error);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Equal("gh comment falló", finished.Error);
     }
 }
