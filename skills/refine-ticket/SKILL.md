@@ -21,10 +21,9 @@ gives you all of that in the prompt — this skill never fetches anything from G
 
 ### 1. Read the ticket
 
-The prompt gives you the ticket's number, title, body, comments, and URL already. Read them
-per the `read-github-ticket` skill's guidance on treating comments as part of the ticket and
-resolving any embedded images before proceeding — screenshots often resolve ambiguity the
-text alone can't.
+The prompt gives you the ticket's number, title, body, comments, and URL already. Later
+comments can correct or override earlier ones, so read them in order. Resolve any embedded
+images before proceeding — screenshots often resolve ambiguity the text alone can't.
 
 ### 2. Refine it
 

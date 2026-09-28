@@ -22,9 +22,10 @@ and the documentation paths to consult.
 ### 1. Understand the ticket
 
 The prompt gives you the ticket's title, body, and comments already fetched and
-formatted. Read them per the `read-github-ticket` skill — including resolving any
-embedded images before proceeding. Inspect the codebase, the documentation paths listed
-in `.ne2-factory/project.md`, and existing code before assuming intent.
+formatted; later comments can correct or override earlier ones, so read them in order.
+Resolve any embedded images (e.g. download and view screenshots linked in the body or
+comments) before proceeding. Inspect the codebase, the documentation paths listed in
+`.ne2-factory/project.md`, and existing code before assuming intent.
 
 This ticket already went through the `refine-ticket` session (it's only queued here once
 labeled `refined`), so it should be implementation-ready. This session is unattended —
