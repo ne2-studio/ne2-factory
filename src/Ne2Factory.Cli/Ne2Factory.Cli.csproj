@@ -28,4 +28,8 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ne2Factory.Cli.Tests" />
+  </ItemGroup>
+
 </Project>
