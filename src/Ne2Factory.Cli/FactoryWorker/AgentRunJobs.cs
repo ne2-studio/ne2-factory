@@ -84,8 +84,8 @@ internal sealed class AgentRunJobs(
     private void ExecuteWork(Guid runId, int number, BacklogItem current)
     {
         var prompt = PromptTemplates.WorkTicket(current);
-        var outcome = agent.Run<AgentSignal>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" });
-        if (outcome is null)
+        var response = agent.Run<ImplementerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" });
+        if (response is null)
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
             LogIfFailed(backlog.MarkFailed(number), number);
@@ -93,36 +93,36 @@ internal sealed class AgentRunJobs(
             return;
         }
 
-        switch (outcome.Status)
+        switch (response.Status)
         {
             case "done":
             {
-                var comment = backlog.Comment(number, FormatWorkTicketComment(outcome));
+                var comment = backlog.Comment(number, FormatWorkTicketComment(response));
                 var close = comment.IsSuccess ? backlog.Close(number) : comment;
                 if (close.IsFailure)
                 {
                     logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, close.Error.Message);
-                    runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, error: close.Error.Message);
+                    runs.Finish(runId, AgentRunStatus.Failed, response.Status, error: close.Error.Message);
                     break;
                 }
-                runs.Finish(runId, AgentRunStatus.Succeeded, outcome.Status, error: null);
+                runs.Finish(runId, AgentRunStatus.Succeeded, response.Status, error: null);
                 logger.LogInformation("-> hecho: #{Number}", number);
                 break;
             }
             case "blocked":
             {
-                var comment = backlog.Comment(number, FormatWorkTicketComment(outcome));
+                var comment = backlog.Comment(number, FormatWorkTicketComment(response));
                 var markFailed = comment.IsSuccess ? backlog.MarkFailed(number) : comment;
                 if (markFailed.IsFailure)
                     logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, markFailed.Error.Message);
-                runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, outcome.Reason);
-                logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", number);
+                runs.Finish(runId, AgentRunStatus.Failed, response.Status, response.Reason);
+                logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(response.Reason) ? "" : $" ({response.Reason})", number);
                 break;
             }
             default:
-                logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", outcome.Status, number);
+                logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", response.Status, number);
                 LogIfFailed(backlog.MarkFailed(number), number);
-                runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, error: $"Resultado desconocido: {outcome.Status}");
+                runs.Finish(runId, AgentRunStatus.Failed, response.Status, error: $"Resultado desconocido: {response.Status}");
                 break;
         }
     }
@@ -133,17 +133,17 @@ internal sealed class AgentRunJobs(
             logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, result.Error.Message);
     }
 
-    private static string FormatWorkTicketComment(AgentSignal outcome)
+    private static string FormatWorkTicketComment(ImplementerResponse response)
     {
-        var body = !string.IsNullOrWhiteSpace(outcome.Summary) ? outcome.Summary : outcome.Reason;
-        return $"## {(outcome.Status == "done" ? "Done" : "Blocked")}\n\n{body ?? "(sin resumen)"}";
+        var body = !string.IsNullOrWhiteSpace(response.Summary) ? response.Summary : response.Reason;
+        return $"## {(response.Status == "done" ? "Done" : "Blocked")}\n\n{body ?? "(sin resumen)"}";
     }
 
     private void ExecuteRefine(Guid runId, int number, BacklogItem current)
     {
         var prompt = PromptTemplates.RefineTicket(current);
-        var signal = agent.Run<RefinementSignal>(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" });
-        if (signal is null || string.IsNullOrWhiteSpace(signal.Outcome))
+        var response = agent.Run<RefinerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" });
+        if (response is null || string.IsNullOrWhiteSpace(response.Outcome))
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
             LogIfFailed(backlog.MarkFailed(number), number);
@@ -151,15 +151,39 @@ internal sealed class AgentRunJobs(
             return;
         }
 
-        var readyResult = RefinementOutcome.Apply(backlog, number, signal);
+        var readyResult = ApplyRefinement(number, response);
         if (readyResult.IsFailure)
         {
             logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, readyResult.Error.Message);
-            runs.Finish(runId, AgentRunStatus.Failed, signal.Outcome, error: readyResult.Error.Message);
+            runs.Finish(runId, AgentRunStatus.Failed, response.Outcome, error: readyResult.Error.Message);
             return;
         }
 
-        runs.Finish(runId, AgentRunStatus.Succeeded, signal.Outcome, error: null);
+        runs.Finish(runId, AgentRunStatus.Succeeded, response.Outcome, error: null);
         logger.LogInformation(readyResult.Value ? "-> refinado: #{Number}" : "-> #{Number} sigue sin datos suficientes; queda a la espera de más información.", number);
+    }
+
+    // Result<bool> rather than plain bool: the bool (was it marked "ready"?) is only
+    // meaningful if both backlog writes actually went through — a Comment/Mark failure
+    // (e.g. `gh` unavailable) must not be reported as "refined"/"missing-data" to the caller.
+    private Result<bool> ApplyRefinement(int number, RefinerResponse response)
+    {
+        var comment = backlog.Comment(number, FormatRefinementComment(response));
+        if (comment.IsFailure) return Result.Failure<bool>(comment.Error);
+
+        if (response.Outcome == RefinementOutcome.Ready)
+            return backlog.MarkRefined(number).Bind(() => Result.Success(true));
+
+        return backlog.MarkMissingData(number).Bind(() => Result.Success(false));
+    }
+
+    private static string FormatRefinementComment(RefinerResponse response)
+    {
+        var summary = string.IsNullOrWhiteSpace(response.Summary) ? "(sin resumen)" : response.Summary;
+        if (response.Questions is not { Count: > 0 })
+            return $"## Refinement\n\n{summary}";
+
+        var questions = string.Join("\n", response.Questions.Select(q => $"- {q}"));
+        return $"## Refinement\n\n{summary}\n\n### Open questions\n{questions}";
     }
 }

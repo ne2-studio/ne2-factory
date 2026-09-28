@@ -41,12 +41,12 @@ public class ClaudeAgentTests
         var stdout = Envelope(structuredOutput: new { status = "done", summary = "s", reason = "r" });
         StubCapture(stdout);
 
-        var signal = _agent.Run<AgentSignal>("do stuff", Options);
+        var response = _agent.Run<ImplementerResponse>("do stuff", Options);
 
-        Assert.NotNull(signal);
-        Assert.Equal("done", signal!.Status);
-        Assert.Equal("s", signal.Summary);
-        Assert.Equal("r", signal.Reason);
+        Assert.NotNull(response);
+        Assert.Equal("done", response!.Status);
+        Assert.Equal("s", response.Summary);
+        Assert.Equal("r", response.Reason);
         Assert.Single(_proc.CaptureCalls);
     }
 
@@ -57,12 +57,12 @@ public class ClaudeAgentTests
         var stdout = Envelope(result: resultJson);
         StubCapture(stdout);
 
-        var signal = _agent.Run<AgentSignal>("do stuff", Options);
+        var response = _agent.Run<ImplementerResponse>("do stuff", Options);
 
-        Assert.NotNull(signal);
-        Assert.Equal("done", signal!.Status);
-        Assert.Equal("s", signal.Summary);
-        Assert.Equal("r", signal.Reason);
+        Assert.NotNull(response);
+        Assert.Equal("done", response!.Status);
+        Assert.Equal("s", response.Summary);
+        Assert.Equal("r", response.Reason);
         // No debe haber lanzado la sesión de reformateo: con "result" ya nos vale.
         Assert.Single(_proc.CaptureCalls);
     }
@@ -74,12 +74,12 @@ public class ClaudeAgentTests
         var haikuStdout = Envelope(structuredOutput: new { status = "blocked", summary = "s2", reason = "r2" });
         StubCapture(primaryStdout, haikuStdout);
 
-        var signal = _agent.Run<AgentSignal>("do stuff", Options);
+        var response = _agent.Run<ImplementerResponse>("do stuff", Options);
 
-        Assert.NotNull(signal);
-        Assert.Equal("blocked", signal!.Status);
-        Assert.Equal("s2", signal.Summary);
-        Assert.Equal("r2", signal.Reason);
+        Assert.NotNull(response);
+        Assert.Equal("blocked", response!.Status);
+        Assert.Equal("s2", response.Summary);
+        Assert.Equal("r2", response.Reason);
         Assert.Equal(2, _proc.CaptureCalls.Count);
         Assert.Contains(_proc.CaptureCalls, call =>
             call.Args.Contains("--model") && call.Args.Contains("haiku") &&
@@ -92,9 +92,9 @@ public class ClaudeAgentTests
         var stdout = Envelope(isError: true, structuredOutput: new { status = "done", summary = "s", reason = "r" });
         StubCapture(stdout);
 
-        var signal = _agent.Run<AgentSignal>("do stuff", Options);
+        var response = _agent.Run<ImplementerResponse>("do stuff", Options);
 
-        Assert.Null(signal);
+        Assert.Null(response);
         // is_error corta el flujo: ni siquiera se intenta el fallback de haiku.
         Assert.Single(_proc.CaptureCalls);
     }
@@ -102,20 +102,20 @@ public class ClaudeAgentTests
     [Fact]
     public void Run_ReturnsNull_WhenAllThreeLevelsFail()
     {
-        // "status" es requerido en AgentSignal: sin él, ninguno de los tres niveles
+        // "status" es requerido en ImplementerResponse: sin él, ninguno de los tres niveles
         // deserializa y el resultado final es null.
         var primaryStdout = Envelope(result: "garbage, not json at all");
         var haikuStdout = Envelope(structuredOutput: new { summary = "s", reason = "r" });
         StubCapture(primaryStdout, haikuStdout);
 
-        var signal = _agent.Run<AgentSignal>("do stuff", Options);
+        var response = _agent.Run<ImplementerResponse>("do stuff", Options);
 
-        Assert.Null(signal);
+        Assert.Null(response);
         Assert.Equal(2, _proc.CaptureCalls.Count);
     }
 
     [Fact]
-    public void Run_ReturnsRefinementSignal_WithQuestions_WhenStructuredOutputIsValid()
+    public void Run_ReturnsRefinerResponse_WithQuestions_WhenStructuredOutputIsValid()
     {
         var stdout = Envelope(structuredOutput: new
         {
@@ -125,12 +125,12 @@ public class ClaudeAgentTests
         });
         StubCapture(stdout);
 
-        var signal = _agent.Run<RefinementSignal>("refine it", Options);
+        var response = _agent.Run<RefinerResponse>("refine it", Options);
 
-        Assert.NotNull(signal);
-        Assert.Equal("falta info", signal!.Summary);
-        Assert.Equal("missing_data", signal.Outcome);
-        Assert.Equal(["¿Qué ticket?"], signal.Questions);
+        Assert.NotNull(response);
+        Assert.Equal("falta info", response!.Summary);
+        Assert.Equal("missing_data", response.Outcome);
+        Assert.Equal(["¿Qué ticket?"], response.Questions);
     }
 
     [Fact]
@@ -140,9 +140,9 @@ public class ClaudeAgentTests
         var haikuStdout = Envelope(result: "still not json");
         StubCapture(primaryStdout, haikuStdout);
 
-        var signal = _agent.Run<RefinementSignal>("refine it", Options);
+        var response = _agent.Run<RefinerResponse>("refine it", Options);
 
-        Assert.Null(signal);
+        Assert.Null(response);
         Assert.Equal(2, _proc.CaptureCalls.Count);
     }
 }

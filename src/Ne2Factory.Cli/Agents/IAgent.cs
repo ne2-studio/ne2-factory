@@ -29,7 +29,7 @@ public sealed record AgentOptions
     public string? Agent { get; init; }
 }
 
-public sealed record AgentSignal
+public sealed record ImplementerResponse
 {
     [JsonPropertyName("status")]
     public required string Status { get; init; }
@@ -41,7 +41,7 @@ public sealed record AgentSignal
     public string? Reason { get; init; }
 }
 
-public sealed record RefinementSignal
+public sealed record RefinerResponse
 {
     [JsonPropertyName("refinement_summary")]
     public string? Summary { get; init; }

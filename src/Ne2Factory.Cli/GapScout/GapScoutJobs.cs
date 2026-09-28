@@ -18,7 +18,7 @@ public sealed class GapScoutJobs(IAgent agent, ILogger<GapScoutJobs> logger)
         var prompt = $"Spawn the `architecture-gap-scout` agent with:\n\nScope: {scope}\n";
 
         logger.LogInformation("gap-scout: {Scope}", scope);
-        agent.Run<AgentSignal>(prompt, new AgentOptions
+        agent.Run<ImplementerResponse>(prompt, new AgentOptions
         {
             SkipPermissions = yolo,
             AllowedTools = yolo ? null : AllowedTools,

@@ -133,14 +133,14 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             }
 
             Console.WriteLine($"Refinando #{item.Number} — {item.Title}");
-            var signal = agent.Run<RefinementSignal>(PromptTemplates.RefineTicket(item), new AgentOptions { SkipPermissions = true, Agent = "refiner" });
-            if (signal is null || string.IsNullOrWhiteSpace(signal.Outcome))
+            var response = agent.Run<RefinerResponse>(PromptTemplates.RefineTicket(item), new AgentOptions { SkipPermissions = true, Agent = "refiner" });
+            if (response is null || string.IsNullOrWhiteSpace(response.Outcome))
             {
                 logger.LogWarning("#{Number}: la sesión terminó sin un resultado interpretable; me detengo aquí.", next.Number);
                 return 1;
             }
 
-            var readyResult = RefinementOutcome.Apply(backlog, next.Number, signal);
+            var readyResult = RefinementOutcome.Apply(backlog, next.Number, response);
             if (readyResult.IsFailure)
             {
                 logger.LogError("#{Number}: fallo actualizando el backlog: {Error}", next.Number, readyResult.Error.Message);
