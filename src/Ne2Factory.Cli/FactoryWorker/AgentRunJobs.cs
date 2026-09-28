@@ -63,6 +63,11 @@ internal sealed class AgentRunJobs(
             return;
         }
 
+        ExecuteWork(runId, number, current);
+    }
+
+    private void ExecuteWork(Guid runId, int number, BacklogItem current)
+    {
         var prompt = PromptTemplates.WorkTicket(current);
         var outcome = agent.Run<AgentSignal>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" });
         if (outcome is null)
