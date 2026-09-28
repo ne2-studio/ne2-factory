@@ -175,7 +175,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
     {
         try
         {
-            value = JsonSerializer.Deserialize<T>(json, SerializerOptions);
+            value = JsonSerializer.Deserialize<T>(StripMarkdownFences(json), SerializerOptions);
             return value is not null;
         }
         catch (JsonException)
@@ -183,5 +183,28 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
             value = null;
             return false;
         }
+    }
+
+    // Models routinely wrap the required-to-be-bare JSON in ```json ... ``` fences despite
+    // the prompt explicitly forbidding it. Strip an outer fenced block if present, and fall
+    // back to the first balanced {...} object in the text otherwise.
+    private static string StripMarkdownFences(string text)
+    {
+        var trimmed = text.Trim();
+
+        if (trimmed.StartsWith("```", StringComparison.Ordinal))
+        {
+            var firstNewline = trimmed.IndexOf('\n');
+            if (firstNewline >= 0)
+            {
+                var closingFence = trimmed.LastIndexOf("```", StringComparison.Ordinal);
+                if (closingFence > firstNewline)
+                    return trimmed[(firstNewline + 1)..closingFence].Trim();
+            }
+        }
+
+        var start = trimmed.IndexOf('{');
+        var end = trimmed.LastIndexOf('}');
+        return start >= 0 && end > start ? trimmed[start..(end + 1)] : trimmed;
     }
 }
