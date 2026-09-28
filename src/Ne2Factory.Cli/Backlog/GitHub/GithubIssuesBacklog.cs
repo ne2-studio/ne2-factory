@@ -27,6 +27,13 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
         gitHubCli.CreateLabelSilently(FailedLabel, "B60205", "Backlog ticket blocked, needs review before requeuing");
     }
 
+    public Result<IReadOnlyList<BacklogItem>> ListPending() =>
+        gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels")
+            .Map(issues => (IReadOnlyList<BacklogItem>)issues
+                .Where(i => i.Labels?.Any(l => l.Name == MissingDataLabel) != true)
+                .Select(i => ToBacklogItem(i, i.Labels?.Any(l => l.Name == RefinedLabel) == true ? TicketState.Refined : TicketState.Unrefined))
+                .ToArray());
+
     public Result<IReadOnlyList<BacklogItem>> ListUnrefined() =>
         gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues

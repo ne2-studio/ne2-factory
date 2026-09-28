@@ -10,6 +10,10 @@ namespace Ne2Factory.Cli.Backlog;
 internal interface IBacklog
 {
     void EnsureLabels();
+
+    // Tickets the factory can currently act on: refined (ready for the
+    // implementer) or unrefined (ready for the refiner).
+    Result<IReadOnlyList<BacklogItem>> ListPending();
     Result<IReadOnlyList<BacklogItem>> ListUnrefined();
     Result<IReadOnlyList<BacklogItem>> ListRefined();
     Result<IReadOnlyList<BacklogItem>> ListMissingData();

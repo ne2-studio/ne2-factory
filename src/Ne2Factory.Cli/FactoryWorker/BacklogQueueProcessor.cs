@@ -21,34 +21,56 @@ internal sealed class BacklogQueueProcessor(
 
     public void ProcessQueue()
     {
-        ProcessIssues("refinados", backlog.ListRefined(), WorkTicketAgent);
-        ProcessIssues("sin refinar", backlog.ListUnrefined(), RefineTicketAgent);
-    }
-
-    private void ProcessIssues(string label, Result<IReadOnlyList<BacklogItem>> itemsResult, string agentName)
-    {
-        if (itemsResult.IsFailure)
+        var pending = backlog.ListPending();
+        if (pending.IsFailure)
         {
-            logger.LogError("No se pudo listar tickets {Label}: {Error}", label, itemsResult.Error.Message);
+            logger.LogError("No se pudo listar tickets pendientes: {Error}", pending.Error.Message);
             return;
         }
 
-        var issues = itemsResult.Value.Select(i => i.Number).OrderBy(n => n).ToArray();
+        var issues = pending.Value.Select(i => i.Number).OrderBy(n => n).ToArray();
 
         if (issues.Length == 0)
         {
-            logger.LogInformation("No hay issues {Label} por procesar.", label);
+            logger.LogInformation("No hay issues por procesar.");
             return;
         }
 
-        logger.LogInformation("Vistos {Count} tickets {Label} en cola: {Numbers}", issues.Length, label, string.Join(", ", issues.Select(n => $"#{n}")));
+        logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", issues.Length, string.Join(", ", issues.Select(n => $"#{n}")));
 
         foreach (var n in issues)
-            TryEnqueue(n, agentName);
+            TryEnqueue(n);
     }
 
-    private void TryEnqueue(int issueNumber, string agentName)
+    private void TryEnqueue(int issueNumber)
     {
+        var itemResult = backlog.GetItem(issueNumber);
+        if (itemResult.IsFailure)
+        {
+            logger.LogError("No se pudo consultar el estado de la issue #{Number}: {Error}", issueNumber, itemResult.Error.Message);
+            return;
+        }
+
+        var item = itemResult.Value;
+        if (item is null)
+        {
+            logger.LogDebug("Issue #{Number} ya no existe; la salto.", issueNumber);
+            return;
+        }
+
+        var agentName = item.State switch
+        {
+            TicketState.Refined => WorkTicketAgent,
+            TicketState.Unrefined => RefineTicketAgent,
+            _ => null,
+        };
+
+        if (agentName is null)
+        {
+            logger.LogDebug("Issue #{Number} está en estado {State}, ya no elegible; la salto.", issueNumber, item.State);
+            return;
+        }
+
         // TryCreateQueued locks per issue number regardless of agent name, so an issue
         // can never have a work-ticket and a refine-ticket run active at once.
         var run = runs.TryCreateQueued(issueNumber, agentName);

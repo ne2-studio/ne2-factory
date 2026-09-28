@@ -23,6 +23,11 @@ internal sealed class InMemoryBacklog : IBacklog
     public void EnsureLabels() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(EnsureLabels)}.");
 
+    public Result<IReadOnlyList<BacklogItem>> ListPending() =>
+        Result.Success((IReadOnlyList<BacklogItem>)items.Values
+            .Where(i => i.State is TicketState.Unrefined or TicketState.Refined)
+            .ToArray());
+
     public Result<IReadOnlyList<BacklogItem>> ListUnrefined() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListUnrefined)}.");
 

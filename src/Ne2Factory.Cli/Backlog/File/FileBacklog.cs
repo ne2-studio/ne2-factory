@@ -17,6 +17,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
 
     public void EnsureLabels() => Directory.CreateDirectory(ctx.BacklogDir);
 
+    public Result<IReadOnlyList<BacklogItem>> ListPending() => Result.Success(ListByStates(s => s is TicketState.Unrefined or TicketState.Refined));
     public Result<IReadOnlyList<BacklogItem>> ListUnrefined() => Result.Success(ListByState(TicketState.Unrefined));
     public Result<IReadOnlyList<BacklogItem>> ListRefined() => Result.Success(ListByState(TicketState.Refined));
     public Result<IReadOnlyList<BacklogItem>> ListMissingData() => Result.Success(ListByState(TicketState.MissingData));
@@ -48,7 +49,9 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
         return Result.Success();
     }
 
-    private IReadOnlyList<BacklogItem> ListByState(TicketState state)
+    private IReadOnlyList<BacklogItem> ListByState(TicketState state) => ListByStates(s => s == state);
+
+    private IReadOnlyList<BacklogItem> ListByStates(Func<TicketState, bool> matches)
     {
         if (!Directory.Exists(ctx.BacklogDir)) return [];
 
@@ -56,7 +59,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
             .Select(dir => int.TryParse(Path.GetFileName(dir), out var number) ? number : (int?)null)
             .Where(number => number.HasValue)
             .Select(number => GetItem(number!.Value).Value)
-            .Where(item => item is not null && item.State == state)
+            .Where(item => item is not null && matches(item.State))
             .Select(item => item!)
             .ToArray();
     }
