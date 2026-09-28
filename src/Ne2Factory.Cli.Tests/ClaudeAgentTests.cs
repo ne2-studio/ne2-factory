@@ -27,31 +27,15 @@ public class ClaudeAgentTests
         };
     }
 
-    private static string Envelope(bool isError = false, object? structuredOutput = null, string? result = null)
+    private static string Envelope(bool isError = false, string? result = null)
     {
         var dict = new Dictionary<string, object?> { ["is_error"] = isError };
-        if (structuredOutput is not null) dict["structured_output"] = structuredOutput;
         if (result is not null) dict["result"] = result;
         return JsonSerializer.Serialize(dict);
     }
 
     [Fact]
-    public void Run_ReturnsSignal_WhenStructuredOutputIsValid()
-    {
-        var stdout = Envelope(structuredOutput: new { status = "done", summary = "s", reason = "r" });
-        StubCapture(stdout);
-
-        var response = _agent.Run<ImplementerResponse>("do stuff", Options);
-
-        Assert.NotNull(response);
-        Assert.Equal("done", response!.Status);
-        Assert.Equal("s", response.Summary);
-        Assert.Equal("r", response.Reason);
-        Assert.Single(_proc.CaptureCalls);
-    }
-
-    [Fact]
-    public void Run_FallsBackToResultField_WhenStructuredOutputIsMissingButResultIsValidJson()
+    public void Run_ReturnsSignal_WhenResultIsValidJson()
     {
         var resultJson = JsonSerializer.Serialize(new { status = "done", summary = "s", reason = "r" });
         var stdout = Envelope(result: resultJson);
@@ -63,15 +47,15 @@ public class ClaudeAgentTests
         Assert.Equal("done", response!.Status);
         Assert.Equal("s", response.Summary);
         Assert.Equal("r", response.Reason);
-        // No debe haber lanzado la sesión de reformateo: con "result" ya nos vale.
         Assert.Single(_proc.CaptureCalls);
     }
 
     [Fact]
-    public void Run_FallsBackToHaikuReformat_WhenNeitherStructuredOutputNorResultAreUsable()
+    public void Run_FallsBackToHaikuReformat_WhenResultIsNotUsableJson()
     {
         var primaryStdout = Envelope(result: "La tarea salió bien, sin bloqueos ni nada raro.");
-        var haikuStdout = Envelope(structuredOutput: new { status = "blocked", summary = "s2", reason = "r2" });
+        var haikuResultJson = JsonSerializer.Serialize(new { status = "blocked", summary = "s2", reason = "r2" });
+        var haikuStdout = Envelope(result: haikuResultJson);
         StubCapture(primaryStdout, haikuStdout);
 
         var response = _agent.Run<ImplementerResponse>("do stuff", Options);
@@ -89,7 +73,8 @@ public class ClaudeAgentTests
     [Fact]
     public void Run_ReturnsNull_WhenIsErrorTrue()
     {
-        var stdout = Envelope(isError: true, structuredOutput: new { status = "done", summary = "s", reason = "r" });
+        var resultJson = JsonSerializer.Serialize(new { status = "done", summary = "s", reason = "r" });
+        var stdout = Envelope(isError: true, result: resultJson);
         StubCapture(stdout);
 
         var response = _agent.Run<ImplementerResponse>("do stuff", Options);
@@ -100,12 +85,13 @@ public class ClaudeAgentTests
     }
 
     [Fact]
-    public void Run_ReturnsNull_WhenAllThreeLevelsFail()
+    public void Run_ReturnsNull_WhenBothLevelsFail()
     {
-        // "status" es requerido en ImplementerResponse: sin él, ninguno de los tres niveles
+        // "status" es requerido en ImplementerResponse: sin él, ningún nivel
         // deserializa y el resultado final es null.
         var primaryStdout = Envelope(result: "garbage, not json at all");
-        var haikuStdout = Envelope(structuredOutput: new { summary = "s", reason = "r" });
+        var haikuResultJson = JsonSerializer.Serialize(new { summary = "s", reason = "r" });
+        var haikuStdout = Envelope(result: haikuResultJson);
         StubCapture(primaryStdout, haikuStdout);
 
         var response = _agent.Run<ImplementerResponse>("do stuff", Options);
@@ -115,14 +101,15 @@ public class ClaudeAgentTests
     }
 
     [Fact]
-    public void Run_ReturnsRefinerResponse_WithQuestions_WhenStructuredOutputIsValid()
+    public void Run_ReturnsRefinerResponse_WithQuestions_WhenResultIsValidJson()
     {
-        var stdout = Envelope(structuredOutput: new
+        var resultJson = JsonSerializer.Serialize(new
         {
             refinement_summary = "falta info",
             refinement_outcome = "missing_data",
             questions = new[] { "¿Qué ticket?" },
         });
+        var stdout = Envelope(result: resultJson);
         StubCapture(stdout);
 
         var response = _agent.Run<RefinerResponse>("refine it", Options);
@@ -144,5 +131,43 @@ public class ClaudeAgentTests
 
         Assert.Null(response);
         Assert.Equal(2, _proc.CaptureCalls.Count);
+    }
+
+    [Fact]
+    public void Run_EmbedsJsonExampleBuiltFromT_InThePromptSentToClaude()
+    {
+        var resultJson = JsonSerializer.Serialize(new { status = "done", summary = "s", reason = "r" });
+        StubCapture(Envelope(result: resultJson));
+
+        _agent.Run<ImplementerResponse>("do stuff", Options);
+
+        var sentPrompt = Assert.Single(_proc.CaptureCalls).Args[^1];
+        Assert.Contains("do stuff", sentPrompt);
+        Assert.Contains(ClaudeAgent.BuildJsonExample<ImplementerResponse>(), sentPrompt);
+    }
+
+    [Fact]
+    public void BuildJsonExample_UsesJsonPropertyNames_WithPlaceholderValues()
+    {
+        var example = ClaudeAgent.BuildJsonExample<ImplementerResponse>();
+
+        using var doc = JsonDocument.Parse(example);
+        var root = doc.RootElement;
+
+        Assert.Equal("<status>", root.GetProperty("status").GetString());
+        Assert.Equal("<summary>", root.GetProperty("summary").GetString());
+        Assert.Equal("<reason>", root.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public void BuildJsonExample_TurnsArrayPropertiesIntoASingleElementPlaceholderArray()
+    {
+        var example = ClaudeAgent.BuildJsonExample<RefinerResponse>();
+
+        using var doc = JsonDocument.Parse(example);
+        var questions = doc.RootElement.GetProperty("questions");
+
+        Assert.Equal(JsonValueKind.Array, questions.ValueKind);
+        Assert.Equal("<questions>", Assert.Single(questions.EnumerateArray()).GetString());
     }
 }

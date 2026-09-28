@@ -1,15 +1,15 @@
+using System.Collections;
 using System.Text.Json;
-using System.Text.Json.Schema;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.Agents;
 
-// Only place that knows how to invoke the `claude` binary: builds its flags
-// (including a `--json-schema` computed on the fly from the caller's T), hands
-// off execution to IProcessRunner, and parses the JSON outcome the prompt
-// instructed the agent to report as its final message.
+// Only place that knows how to invoke the `claude` binary: builds its flags, hands off
+// execution to IProcessRunner, and parses the JSON outcome the prompt instructed the
+// agent to report as its final message.
 internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logger) : IAgent
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
@@ -19,20 +19,61 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
 
     public T? Run<T>(string prompt, AgentOptions options) where T : class
     {
-        var jsonSchema = BuildJsonSchema<T>();
-        var stdout = RunClaude(prompt, options, jsonSchema);
-        return ResolveStructured<T>(stdout, jsonSchema);
+        var jsonExample = BuildJsonExample<T>();
+        var stdout = RunClaude(WithReportingInstruction(prompt, jsonExample), options);
+        return ResolveStructured<T>(stdout, jsonExample);
     }
 
-    private static string BuildJsonSchema<T>()
+    // Built from T's own shape (property names, following its JsonPropertyName mapping)
+    // rather than a hand-written schema, so the example the agent sees can never drift
+    // from what we'll actually try to deserialize.
+    internal static string BuildJsonExample<T>()
     {
-        var schema = JsonSchemaExporter.GetJsonSchemaAsNode(SerializerOptions, typeof(T));
-        return schema.ToJsonString();
+        var typeInfo = SerializerOptions.GetTypeInfo(typeof(T));
+        var example = new JsonObject();
+        foreach (var property in typeInfo.Properties)
+            example[property.Name] = ExampleValue(property.PropertyType, property.Name);
+        return example.ToJsonString();
     }
 
-    private string RunClaude(string prompt, AgentOptions options, string jsonSchema)
+    // Every leaf becomes a "<property name>" placeholder: the agent is meant to fill in
+    // real content there, not copy a literal type name or made-up sample value.
+    private static JsonNode? ExampleValue(Type propertyType, string propertyName)
     {
-        var args = new List<string> { "--print", "--output-format", "json", "--json-schema", jsonSchema };
+        var elementType = EnumerableElementType(propertyType);
+        return elementType is not null
+            ? new JsonArray(JsonValue.Create($"<{propertyName}>"))
+            : JsonValue.Create($"<{propertyName}>");
+    }
+
+    private static Type? EnumerableElementType(Type type)
+    {
+        if (type == typeof(string)) return null;
+
+        return type.GetInterfaces().Prepend(type)
+            .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            .Select(i => i.GetGenericArguments()[0])
+            .FirstOrDefault();
+    }
+
+    // --json-schema is unreliable: the CLI only fills "structured_output" when the
+    // session closes with a tool_use turn, which long/heavy sessions routinely don't.
+    // So the contract lives in the prompt itself, as an example built from T's shape,
+    // and we read the agent's own final message ("result") as that JSON.
+    private static string WithReportingInstruction(string prompt, string jsonExample) => $"""
+        {prompt}
+
+        ---
+
+        Your final message must be nothing but a single JSON object shaped like this example
+        (same keys, real content instead of the placeholders) — no markdown code fences, no
+        prose before or after it:
+        {jsonExample}
+        """;
+
+    private string RunClaude(string prompt, AgentOptions options)
+    {
+        var args = new List<string> { "--print", "--output-format", "json" };
 
         if (options.Agent is not null)
         {
@@ -60,35 +101,22 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         return stdout;
     }
 
-    // --json-schema is best-effort: the CLI only fills "structured_output" when
-    // the model actually invokes the schema-bound tool at the end (stop_reason
-    // "tool_use"). A long/heavy session can end with a plain-text "end_turn"
-    // instead, leaving "structured_output" absent even though "result" holds
-    // the same answer as JSON text. So we fall back in three steps, validating
-    // that the result actually deserializes into T at every step rather than
-    // trusting the CLI blindly:
-    //   1. "structured_output" as given by the CLI.
-    //   2. "result" re-parsed as JSON, if it happens to already be clean JSON.
-    //   3. A small, cheap Haiku session whose only job is to reformat the raw
-    //      "result" text into the required shape.
-    private T? ResolveStructured<T>(string stdout, string jsonSchema) where T : class
+    // "result" is the agent's final message verbatim, which the prompt instructed to be
+    // nothing but the JSON object we need. If the agent ignored that anyway, fall back to
+    // a small, cheap Haiku session whose only job is to reformat the raw "result" text
+    // into the required shape.
+    private T? ResolveStructured<T>(string stdout, string jsonExample) where T : class
     {
         var envelope = ParseEnvelope(stdout);
         if (envelope is not { IsError: false } e) return null;
 
-        if (e.StructuredOutput is { } fromCli && TryDeserialize<T>(fromCli.GetRawText(), out var fromCliValue))
-            return fromCliValue;
-
         if (e.ResultText is not { } resultText) return null;
 
         if (TryDeserialize<T>(resultText, out var fromResult))
-        {
-            logger.LogWarning("structured_output ausente o inválido; result ya era JSON válido y deserializa en {Type}, lo uso como resultado.", typeof(T).Name);
             return fromResult;
-        }
 
-        logger.LogWarning("structured_output y result no deserializan en {Type}; lanzo una sesión de reformateo con haiku.", typeof(T).Name);
-        var reformatted = RunReformatFallback(resultText, jsonSchema);
+        logger.LogWarning("result no deserializa en {Type}; lanzo una sesión de reformateo con haiku.", typeof(T).Name);
+        var reformatted = RunReformatFallback(resultText, jsonExample);
         if (reformatted is { } fromFallbackText && TryDeserialize<T>(fromFallbackText, out var fromFallback))
             return fromFallback;
 
@@ -96,16 +124,20 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
     }
 
     // Cheap last resort: no tools, no permissions, low effort — its only job is
-    // turning already-produced free text into the shape the schema demands.
-    private string? RunReformatFallback(string rawText, string jsonSchema)
+    // turning already-produced free text into the shape the example demands.
+    private string? RunReformatFallback(string rawText, string jsonExample)
     {
+        var prompt = WithReportingInstruction(
+            $"Reformatea la siguiente respuesta al formato exigido, sin añadir ni quitar información: {rawText}",
+            jsonExample);
+
         var args = new List<string>
         {
-            "--print", "--output-format", "json", "--json-schema", jsonSchema,
+            "--print", "--output-format", "json",
             "--model", "haiku", "--effort", "low", "--dangerously-skip-permissions",
             "--allowed-tools", "",
             "--",
-            $"Reformatea la siguiente respuesta al formato exigido por el schema, sin añadir ni quitar información: {rawText}",
+            prompt,
         };
 
         var (stdout, stderr, _) = proc.Capture("claude", args);
@@ -115,10 +147,10 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
             logger.LogWarning("{Stderr}", stderr);
 
         var envelope = ParseEnvelope(stdout);
-        return envelope is { IsError: false, StructuredOutput: { } so } ? so.GetRawText() : null;
+        return envelope is { IsError: false, ResultText: { } resultText } ? resultText : null;
     }
 
-    private static (bool IsError, JsonElement? StructuredOutput, string? ResultText)? ParseEnvelope(string stdout)
+    private static (bool IsError, string? ResultText)? ParseEnvelope(string stdout)
     {
         try
         {
@@ -127,15 +159,11 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
 
             var isError = root.TryGetProperty("is_error", out var errorProp) && errorProp.GetBoolean();
 
-            JsonElement? structuredOutput = root.TryGetProperty("structured_output", out var so) && so.ValueKind == JsonValueKind.Object
-                ? so.Clone()
-                : null;
-
             string? resultText = root.TryGetProperty("result", out var r) && r.ValueKind == JsonValueKind.String
                 ? r.GetString()
                 : null;
 
-            return (isError, structuredOutput, resultText);
+            return (isError, resultText);
         }
         catch (JsonException)
         {
