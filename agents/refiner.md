@@ -72,9 +72,7 @@ Use when appropriate:
 
 # Input contract
 
-You run headless, as the whole session — nothing spawned you and nothing is waiting on a
-message besides your final one. Your prompt is one ticket: its number, title, body, and
-comments.
+You receive one ticket: its number, title, body, and comments.
 
 # Completion criteria
 
@@ -86,10 +84,13 @@ The mission is complete when either:
 
 # Output / handoff contract
 
-The only way you can report your outcome is through your final message, so it is parsed
-programmatically. Your very last message must be nothing but a single JSON object — no
-markdown code fences, no text before or after it — with this exact shape:
-{"refinement_summary": "<implementation-ready shape of the ticket: original intent plus every finding and decision made along the way>", "refinement_outcome": "ready" | "missing_data", "questions": ["<open question>", ...]}
+Report, to whoever is reading your final message:
+- **refinement summary**: the implementation-ready shape of the ticket — original intent
+  plus every finding and decision made along the way.
+- **refinement outcome**: `ready` if nothing material is left ambiguous, `missing_data`
+  if it is.
+- **questions**: when the outcome is `missing_data`, the exact open question(s) a human
+  needs to answer; omit when there are none.
 
-Omit `questions` (or leave it an empty array) when the outcome is `ready` or there's
-nothing left open.
+If whoever invoked you asked for a specific reporting format (e.g. a particular final-
+message shape for programmatic parsing), follow that instead of improvising your own.
