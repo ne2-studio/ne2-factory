@@ -9,11 +9,12 @@ on.
   labeled `refined` unattended through `claude --agent implementer`, fed the `work-ticket`
   prompt (a versioned resource in this project, not a Claude Code skill — see
   `PromptTemplates` in `src/Ne2Factory.Cli`): the session opens as the Implementer Agent
-  and coordinates the ticket end to end — delegate implementation, verify, commit, push,
-  comment the result back on the issue. Unrefined tickets get the same treatment via
-  `claude --agent refiner`. See `ne2-factory run --help`. Tickets are queued by filing a
-  GitHub issue with the `backlog` label directly — this tool no longer queues tickets
-  itself.
+  and coordinates the ticket end to end — delegate implementation, verify, commit, push —
+  then reports what happened in its final JSON message. The factory itself, not the
+  session, posts that as a comment on the issue and closes it (or marks it failed).
+  Unrefined tickets get the same treatment via `claude --agent refiner`. See
+  `ne2-factory run --help`. Tickets are queued by filing a GitHub issue with the `backlog`
+  label directly — this tool no longer queues tickets itself.
 * `ne2-factory backlog` — inspect/manage the queue (`list`, `refine`, `requeue`). See
   `ne2-factory backlog --help`.
 * `ne2-factory backlog refine` — walks every queued ticket that isn't yet `refined`, one at

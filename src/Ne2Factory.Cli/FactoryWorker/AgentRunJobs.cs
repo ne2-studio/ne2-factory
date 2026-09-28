@@ -76,11 +76,13 @@ internal sealed class AgentRunJobs(
         switch (outcome.Status)
         {
             case "done":
+                backlog.Comment(number, FormatWorkTicketComment(outcome));
                 backlog.Close(number);
                 runs.Finish(runId, AgentRunStatus.Succeeded, outcome.Status, error: null);
                 logger.LogInformation("-> hecho: #{Number}", number);
                 break;
             case "blocked":
+                backlog.Comment(number, FormatWorkTicketComment(outcome));
                 backlog.MarkFailed(number);
                 runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, outcome.Reason);
                 logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", number);
@@ -91,6 +93,12 @@ internal sealed class AgentRunJobs(
                 runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, error: $"Resultado desconocido: {outcome.Status}");
                 break;
         }
+    }
+
+    private static string FormatWorkTicketComment(AgentSignal outcome)
+    {
+        var body = !string.IsNullOrWhiteSpace(outcome.Summary) ? outcome.Summary : outcome.Reason;
+        return $"## {(outcome.Status == "done" ? "Done" : "Blocked")}\n\n{body ?? "(sin resumen)"}";
     }
 
     private void ExecuteRefine(Guid runId, int number, BacklogItem current)

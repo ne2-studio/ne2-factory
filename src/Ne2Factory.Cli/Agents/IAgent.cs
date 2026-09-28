@@ -30,6 +30,6 @@ public sealed record AgentOptions
     public string? Agent { get; init; }
 }
 
-public sealed record AgentSignal(string? Status, string? Reason);
+public sealed record AgentSignal(string? Status, string? Summary, string? Reason);
 
 public sealed record RefinementSignal(string? Summary, string? Outcome, IReadOnlyList<string>? Questions);

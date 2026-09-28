@@ -33,7 +33,7 @@ This ticket already went through refinement (it's only queued here once labeled
 live reviewer to interrupt, so never ask a question here. If it still turns out to be
 genuinely ambiguous or contradictory in a way that materially affects product behavior,
 scope, or architecture, that's a gap in refinement, not something to resolve by guessing:
-treat it as blocked (step 6) and say so, so it can go back through refinement.
+treat it as blocked (step 5) and say so, so it can go back through refinement.
 
 ### 2. Delegate implementation
 
@@ -48,7 +48,7 @@ owns reproducing/implementing, testing, and getting its own diff verified throug
 `verifier` agent — do not duplicate that work here.
 
 If it returns `BLOCKED: REQUIREMENT_AMBIGUITY`, do not attempt to resolve it yourself —
-proceed to step 6 as blocked, including its question in the reason, so the ticket can go
+proceed to step 5 as blocked, including its question in the reason, so the ticket can go
 back through refinement.
 
 ### 3. Confirm the handoff
@@ -63,25 +63,14 @@ This session runs fully unattended and headless (`claude --print`) — there is 
 review or approve anything, so commit and push straight to the default branch without
 pausing for confirmation at any point. Write the commit message with what changed, why, and
 the verification evidence (mirroring the `verifier` agent's handoff format); you'll reuse
-that same summary for the issue comment in step 5.
+that same summary in your final report (step 5) — posting it on the issue is the factory's
+job, not yours.
 
 Never leave the default branch in a state where the working tree has verified-but-
 uncommitted changes when you finish the turn — either it's committed and pushed, or you've
-signaled `blocked` (step 6) explaining why.
+signaled `blocked` (step 5) explaining why.
 
-### 5. Report back to the issue
-
-The ticket's GitHub issue number is given above (`Ticket: {{TICKET_REFERENCE}}`). Use the
-`github-ticket-progress` skill to post your final feedback there as a comment, so the
-outcome is visible on the issue itself, not just in a session no one will attend:
-
-- On success: the same summary from the commit message (what changed, why, verification
-  evidence), plus the commit SHA(s).
-- If blocked: the explanation of why, exactly as given in your final message.
-
-Post this before signaling completion (step 6).
-
-### 6. Report the outcome
+### 5. Report the outcome
 
 This is the last thing you do. Your outcome is one of:
 
@@ -94,9 +83,11 @@ Do not report `done` until the work is actually committed and pushed, and don't 
 `blocked` until you have truly given up.
 
 The only way you can report your outcome back is through your final message, so it is
-parsed programmatically. Your very last message must be nothing but a single JSON object —
-no markdown code fences, no text before or after it — with this exact shape:
-{"status": "done" | "blocked", "reason": "<empty string if done, short explanation if blocked>"}
+parsed programmatically — the factory posts it on the issue and closes/labels it for you,
+so include everything the reviewer would need to see there. Your very last message must be
+nothing but a single JSON object — no markdown code fences, no text before or after it —
+with this exact shape:
+{"status": "done" | "blocked", "summary": "<on done: what changed, why, verification evidence, and the commit SHA(s); on blocked: the explanation of why>", "reason": "<empty string if done, short explanation if blocked>"}
 
 ## Constraints
 

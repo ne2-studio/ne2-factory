@@ -15,8 +15,9 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         if (json is null) return null;
 
         var status = json.Value.TryGetProperty("status", out var s) ? s.GetString() : null;
+        var summary = json.Value.TryGetProperty("summary", out var sum) ? sum.GetString() : null;
         var reason = json.Value.TryGetProperty("reason", out var r) ? r.GetString() : null;
-        return new AgentSignal(status, reason);
+        return new AgentSignal(status, summary, reason);
     }
 
     public RefinementSignal? RunRefinement(string prompt, AgentOptions options)
