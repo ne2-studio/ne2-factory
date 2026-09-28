@@ -19,8 +19,8 @@ internal sealed class AgentRunJobs(
     IAgent agent,
     ILogger<AgentRunJobs> logger)
 {
-    private const string WorkTicketAgent = "work-ticket";
-    private const string RefineTicketAgent = "refine-ticket";
+    private const string WorkTicketAgent = "implementer";
+    private const string RefineTicketAgent = "refiner";
 
     public void Execute(Guid runId)
     {
@@ -55,7 +55,7 @@ internal sealed class AgentRunJobs(
         proc.RunInherited("git", ["pull", "--ff-only"]);
 
         logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
-        logger.LogInformation("Lanzando /{Agent} en la issue #{Number} ({Url}).", run.AgentName, number, current.Url);
+        logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number, current.Url);
 
         if (run.AgentName == RefineTicketAgent)
         {

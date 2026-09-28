@@ -15,8 +15,8 @@ internal sealed class BacklogQueueProcessor(
     IBackgroundJobClient backgroundJobs,
     ILogger<BacklogQueueProcessor> logger)
 {
-    private const string WorkTicketAgent = "work-ticket";
-    private const string RefineTicketAgent = "refine-ticket";
+    private const string WorkTicketAgent = "implementer";
+    private const string RefineTicketAgent = "refiner";
 
     public void ProcessQueue()
     {
