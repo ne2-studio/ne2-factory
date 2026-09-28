@@ -10,7 +10,7 @@ public class AgentRunJobsTests
 {
     private const int IssueNumber = 42;
 
-    private readonly FakeBacklog _backlog = new();
+    private readonly InMemoryBacklog _backlog = new();
     private readonly InMemoryAgentRunRepository _runs = new();
     private readonly FakeProcessRunner _proc = new();
     private readonly FakeAgent _agent = new();
@@ -38,7 +38,7 @@ public class AgentRunJobsTests
     {
         _sut.Execute(Guid.NewGuid());
 
-        Assert.Empty(_backlog.GetItemCalls);
+        Assert.Null(_backlog.Get(IssueNumber));
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Unrefined));
+        _backlog.Add(CreateItem(TicketState.Unrefined));
 
         _sut.Execute(run.Id);
 
@@ -64,7 +64,7 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Failure<BacklogItem?>(ApplicationError.ExternalDependencyUnavailable("gh no disponible"));
+        _backlog.GetItemFailure = ApplicationError.ExternalDependencyUnavailable("gh no disponible");
 
         _sut.Execute(run.Id);
 
@@ -79,7 +79,7 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Refined));
+        _backlog.Add(CreateItem(TicketState.Refined));
         _proc.OnRunInherited = (_, _, _) => 1;
 
         _sut.Execute(run.Id);
@@ -95,12 +95,12 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Refined));
+        _backlog.Add(CreateItem(TicketState.Refined));
         _agent.OnRun = (_, _) => null;
 
         _sut.Execute(run.Id);
 
-        Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
+        Assert.Equal(TicketState.Failed, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Null(finished.Outcome);
@@ -111,13 +111,14 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Refined));
+        _backlog.Add(CreateItem(TicketState.Refined));
         _agent.OnRun = (_, _) => new ImplementerResponse { Status = "done", Summary = "todo listo" };
 
         _sut.Execute(run.Id);
 
-        Assert.Equal([IssueNumber], _backlog.ClosedNumbers);
-        Assert.Single(_backlog.Comments);
+        var item = _backlog.Get(IssueNumber)!;
+        Assert.Equal(TicketState.Done, item.State);
+        Assert.Single(item.Comments);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
         Assert.Equal("done", finished.Outcome);
@@ -129,12 +130,13 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Refined));
+        _backlog.Add(CreateItem(TicketState.Refined));
         _agent.OnRun = (_, _) => new ImplementerResponse { Status = "done", Summary = "todo listo" };
-        _backlog.CloseResult = Result.Failure(ApplicationError.ExternalDependencyUnavailable("gh close falló"));
+        _backlog.CloseFailure = ApplicationError.ExternalDependencyUnavailable("gh close falló");
 
         _sut.Execute(run.Id);
 
+        Assert.Equal(TicketState.Refined, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Equal("gh close falló", finished.Error);
@@ -145,12 +147,12 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Refined));
+        _backlog.Add(CreateItem(TicketState.Refined));
         _agent.OnRun = (_, _) => new ImplementerResponse { Status = "blocked", Reason = "falta acceso" };
 
         _sut.Execute(run.Id);
 
-        Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
+        Assert.Equal(TicketState.Failed, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Equal("blocked", finished.Outcome);
@@ -162,12 +164,12 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Refined));
+        _backlog.Add(CreateItem(TicketState.Refined));
         _agent.OnRun = (_, _) => new ImplementerResponse { Status = "weird" };
 
         _sut.Execute(run.Id);
 
-        Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
+        Assert.Equal(TicketState.Failed, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Contains("weird", finished.Error);
@@ -178,12 +180,12 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Unrefined));
+        _backlog.Add(CreateItem(TicketState.Unrefined));
         _agent.OnRun = (_, _) => null;
 
         _sut.Execute(run.Id);
 
-        Assert.Equal([IssueNumber], _backlog.MarkFailedNumbers);
+        Assert.Equal(TicketState.Failed, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Null(finished.Outcome);
@@ -194,13 +196,14 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Unrefined));
+        _backlog.Add(CreateItem(TicketState.Unrefined));
         _agent.OnRun = (_, _) => new RefinerResponse { Outcome = "ready", Summary = "listo" };
 
         _sut.Execute(run.Id);
 
-        Assert.Equal([IssueNumber], _backlog.MarkRefinedNumbers);
-        Assert.Empty(_backlog.MarkMissingDataNumbers);
+        var item = _backlog.Get(IssueNumber)!;
+        Assert.Equal(TicketState.Refined, item.State);
+        Assert.Single(item.Comments);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
         Assert.Equal("ready", finished.Outcome);
@@ -211,7 +214,7 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Unrefined));
+        _backlog.Add(CreateItem(TicketState.Unrefined));
         _agent.OnRun = (_, _) => new RefinerResponse
         {
             Outcome = "missing_data",
@@ -221,8 +224,7 @@ public class AgentRunJobsTests
 
         _sut.Execute(run.Id);
 
-        Assert.Equal([IssueNumber], _backlog.MarkMissingDataNumbers);
-        Assert.Empty(_backlog.MarkRefinedNumbers);
+        Assert.Equal(TicketState.MissingData, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
         Assert.Equal("missing_data", finished.Outcome);
@@ -233,12 +235,15 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Unrefined));
+        _backlog.Add(CreateItem(TicketState.Unrefined));
         _agent.OnRun = (_, _) => new RefinerResponse { Outcome = "ready", Summary = "listo" };
-        _backlog.MarkRefinedResult = Result.Failure(ApplicationError.ExternalDependencyUnavailable("gh label falló"));
+        _backlog.MarkRefinedFailure = ApplicationError.ExternalDependencyUnavailable("gh label falló");
 
         _sut.Execute(run.Id);
 
+        var item = _backlog.Get(IssueNumber)!;
+        Assert.Equal(TicketState.Unrefined, item.State);
+        Assert.Single(item.Comments);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Equal("gh label falló", finished.Error);
@@ -249,13 +254,15 @@ public class AgentRunJobsTests
     {
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
-        _backlog.GetItemResult = Result.Success<BacklogItem?>(CreateItem(TicketState.Unrefined));
+        _backlog.Add(CreateItem(TicketState.Unrefined));
         _agent.OnRun = (_, _) => new RefinerResponse { Outcome = "ready", Summary = "listo" };
-        _backlog.CommentResult = Result.Failure(ApplicationError.ExternalDependencyUnavailable("gh comment falló"));
+        _backlog.CommentFailure = ApplicationError.ExternalDependencyUnavailable("gh comment falló");
 
         _sut.Execute(run.Id);
 
-        Assert.Empty(_backlog.MarkRefinedNumbers);
+        var item = _backlog.Get(IssueNumber)!;
+        Assert.Equal(TicketState.Unrefined, item.State);
+        Assert.Empty(item.Comments);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Equal("gh comment falló", finished.Error);
