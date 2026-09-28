@@ -112,7 +112,7 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             }
 
             Console.WriteLine($"Refinando #{item.Number} — {item.Title}");
-            var signal = agent.RunRefinement(PromptTemplates.RefineTicket(item), new AgentOptions { SkipPermissions = true, Agent = "refiner" });
+            var signal = agent.Run<RefinementSignal>(PromptTemplates.RefineTicket(item), new AgentOptions { SkipPermissions = true, Agent = "refiner" });
             if (signal is null || string.IsNullOrWhiteSpace(signal.Outcome))
             {
                 logger.LogWarning("#{Number}: la sesión terminó sin un resultado interpretable; me detengo aquí.", next.Number);

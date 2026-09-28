@@ -64,7 +64,7 @@ internal sealed class AgentRunJobs(
         }
 
         var prompt = PromptTemplates.WorkTicket(current);
-        var outcome = agent.Run(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" });
+        var outcome = agent.Run<AgentSignal>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" });
         if (outcome is null)
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
@@ -104,7 +104,7 @@ internal sealed class AgentRunJobs(
     private void ExecuteRefine(Guid runId, int number, BacklogItem current)
     {
         var prompt = PromptTemplates.RefineTicket(current);
-        var signal = agent.RunRefinement(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" });
+        var signal = agent.Run<RefinementSignal>(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" });
         if (signal is null || string.IsNullOrWhiteSpace(signal.Outcome))
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);

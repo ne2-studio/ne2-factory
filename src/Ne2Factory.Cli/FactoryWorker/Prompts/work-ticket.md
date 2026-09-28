@@ -64,12 +64,12 @@ This is the last thing you do. Your outcome is one of:
 Do not report `done` until the work is actually committed and pushed, and don't report
 `blocked` until you have truly given up.
 
-The only way you can report your outcome back is through your final message, so it is
-parsed programmatically — the factory posts it on the issue and closes/labels it for you,
-so include everything the reviewer would need to see there. Your very last message must be
-nothing but a single JSON object — no markdown code fences, no text before or after it —
-with this exact shape:
-{"status": "done" | "blocked", "summary": "<on done: what changed, why, verification evidence, and the commit SHA(s); on blocked: the explanation of why>", "reason": "<empty string if done, short explanation if blocked>"}
+Your final report is parsed programmatically — the factory posts it on the issue and
+closes/labels it for you, so include everything the reviewer would need to see there:
+- `status`: `done` or `blocked`.
+- `summary`: on `done`, what changed, why, the verification evidence, and the commit
+  SHA(s); on `blocked`, leave it empty.
+- `reason`: on `done`, empty; on `blocked`, a short explanation of why.
 
 ## Constraints
 

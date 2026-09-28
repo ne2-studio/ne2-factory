@@ -1,20 +1,19 @@
+using System.Text.Json.Serialization;
+
 namespace Ne2Factory.Cli.Agents;
 
 // Abstracts spawning a headless Claude session so callers (BacklogQueueProcessor,
 // GapScoutJobs, ...) don't build `claude` CLI args by hand.
 public interface IAgent
 {
-    // Runs a headless session synchronously and returns the outcome it reported
-    // as its final message. Null means the session ended without a parseable
-    // outcome (crash, manual exit, or it didn't follow the prompt's reporting
-    // contract) — callers treat that as needing human review.
-    AgentSignal? Run(string prompt, AgentOptions options);
-
-    // Runs a headless refine-ticket session and returns the refinement outcome
-    // it reported as its final message. Null means the session ended without a
-    // parseable outcome — callers treat that as needing human review, same as
-    // a null Run result.
-    RefinementSignal? RunRefinement(string prompt, AgentOptions options);
+    // Runs a headless session synchronously and returns the outcome it reported as
+    // its final message, deserialized into T. The JSON schema handed to `claude
+    // --json-schema` is built dynamically from T, so callers just describe the shape
+    // they need instead of hand-writing (and keeping in sync) a raw schema string.
+    // Null means the session ended without a result that deserializes into T (crash,
+    // manual exit, or it didn't follow the prompt's reporting contract) — callers
+    // treat that as needing human review.
+    T? Run<T>(string prompt, AgentOptions options) where T : class;
 }
 
 public sealed record AgentOptions
@@ -30,6 +29,26 @@ public sealed record AgentOptions
     public string? Agent { get; init; }
 }
 
-public sealed record AgentSignal(string? Status, string? Summary, string? Reason);
+public sealed record AgentSignal
+{
+    [JsonPropertyName("status")]
+    public required string Status { get; init; }
 
-public sealed record RefinementSignal(string? Summary, string? Outcome, IReadOnlyList<string>? Questions);
+    [JsonPropertyName("summary")]
+    public string? Summary { get; init; }
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; init; }
+}
+
+public sealed record RefinementSignal
+{
+    [JsonPropertyName("refinement_summary")]
+    public string? Summary { get; init; }
+
+    [JsonPropertyName("refinement_outcome")]
+    public string? Outcome { get; init; }
+
+    [JsonPropertyName("questions")]
+    public IReadOnlyList<string>? Questions { get; init; }
+}
