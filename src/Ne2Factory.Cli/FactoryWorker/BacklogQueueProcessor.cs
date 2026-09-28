@@ -81,7 +81,6 @@ internal sealed class BacklogQueueProcessor(
         }
 
         var jobId = backgroundJobs.Enqueue<AgentRunJobs>(job => job.Execute(run.Id));
-        runs.SetHangfireJobId(run.Id, jobId);
         logger.LogInformation("Encolado: {JobId} (issue #{Number}, agente {AgentName}, run {RunId}).", jobId, issueNumber, agentName, run.Id);
     }
 }

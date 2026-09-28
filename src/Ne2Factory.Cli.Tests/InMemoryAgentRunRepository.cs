@@ -11,9 +11,6 @@ internal sealed class InMemoryAgentRunRepository : IAgentRunRepository
     public AgentRun? TryCreateQueued(int issueNumber, string agentName) =>
         throw new NotSupportedException($"{nameof(InMemoryAgentRunRepository)} no soporta {nameof(TryCreateQueued)}.");
 
-    public void SetHangfireJobId(Guid id, string jobId) =>
-        throw new NotSupportedException($"{nameof(InMemoryAgentRunRepository)} no soporta {nameof(SetHangfireJobId)}.");
-
     public AgentRun? Get(Guid id) => runs.GetValueOrDefault(id);
 
     public void MarkRunning(Guid id)

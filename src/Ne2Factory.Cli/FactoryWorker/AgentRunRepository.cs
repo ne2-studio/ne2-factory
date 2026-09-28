@@ -26,7 +26,6 @@ internal sealed class AgentRun
 
     public AgentRunStatus Status { get; set; }
 
-    public string? HangfireJobId { get; set; }
     public DateTime QueuedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? FinishedAt { get; set; }
@@ -45,7 +44,6 @@ internal interface IAgentRunRepository
     // check) — returns null in that case.
     AgentRun? TryCreateQueued(int issueNumber, string agentName);
 
-    void SetHangfireJobId(Guid id, string jobId);
     AgentRun? Get(Guid id);
     void MarkRunning(Guid id);
     void Finish(Guid id, AgentRunStatus status, string? outcome, string? error);
@@ -95,11 +93,6 @@ internal sealed class SqliteAgentRunRepository : IAgentRunRepository
         }
 
         return run;
-    }
-
-    public void SetHangfireJobId(Guid id, string jobId)
-    {
-        lock (gate) connection.Execute("UPDATE AgentRuns SET HangfireJobId = ? WHERE Id = ?", jobId, id);
     }
 
     public AgentRun? Get(Guid id)
