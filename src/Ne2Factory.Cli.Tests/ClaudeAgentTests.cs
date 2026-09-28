@@ -1,8 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Ne2Factory.Cli.Agents;
-using Ne2Factory.Cli.Services;
-using NSubstitute;
 
 namespace Ne2Factory.Cli.Tests;
 
@@ -10,7 +8,7 @@ public class ClaudeAgentTests
 {
     private static readonly AgentOptions Options = new() { SkipPermissions = true };
 
-    private readonly IProcessRunner _proc = Substitute.For<IProcessRunner>();
+    private readonly FakeProcessRunner _proc = new();
     private readonly ClaudeAgent _agent;
 
     public ClaudeAgentTests()
@@ -20,15 +18,13 @@ public class ClaudeAgentTests
 
     private void StubCapture(string primaryStdout, string? haikuStdout = null)
     {
-        _proc.Capture(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>())
-            .Returns(callInfo =>
-            {
-                var args = callInfo.ArgAt<IReadOnlyList<string>>(1);
-                var isFallback = args.Contains("haiku");
-                if (isFallback && haikuStdout is not null)
-                    return (haikuStdout, "", 0);
-                return (primaryStdout, "", 0);
-            });
+        _proc.OnCapture = (_, args, _) =>
+        {
+            var isFallback = args.Contains("haiku");
+            if (isFallback && haikuStdout is not null)
+                return (haikuStdout, "", 0);
+            return (primaryStdout, "", 0);
+        };
     }
 
     private static string Envelope(bool isError = false, object? structuredOutput = null, string? result = null)
@@ -51,7 +47,7 @@ public class ClaudeAgentTests
         Assert.Equal("done", signal!.Status);
         Assert.Equal("s", signal.Summary);
         Assert.Equal("r", signal.Reason);
-        _proc.Received(1).Capture(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>());
+        Assert.Single(_proc.CaptureCalls);
     }
 
     [Fact]
@@ -68,7 +64,7 @@ public class ClaudeAgentTests
         Assert.Equal("s", signal.Summary);
         Assert.Equal("r", signal.Reason);
         // No debe haber lanzado la sesión de reformateo: con "result" ya nos vale.
-        _proc.Received(1).Capture(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>());
+        Assert.Single(_proc.CaptureCalls);
     }
 
     [Fact]
@@ -84,11 +80,10 @@ public class ClaudeAgentTests
         Assert.Equal("blocked", signal!.Status);
         Assert.Equal("s2", signal.Summary);
         Assert.Equal("r2", signal.Reason);
-        _proc.Received(2).Capture(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>());
-        _proc.Received(1).Capture(
-            Arg.Any<string>(),
-            Arg.Is<IReadOnlyList<string>>(a => a.Contains("--model") && a.Contains("haiku") && a.Contains("--effort") && a.Contains("low")),
-            Arg.Any<string?>());
+        Assert.Equal(2, _proc.CaptureCalls.Count);
+        Assert.Contains(_proc.CaptureCalls, call =>
+            call.Args.Contains("--model") && call.Args.Contains("haiku") &&
+            call.Args.Contains("--effort") && call.Args.Contains("low"));
     }
 
     [Fact]
@@ -101,7 +96,7 @@ public class ClaudeAgentTests
 
         Assert.Null(signal);
         // is_error corta el flujo: ni siquiera se intenta el fallback de haiku.
-        _proc.Received(1).Capture(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>());
+        Assert.Single(_proc.CaptureCalls);
     }
 
     [Fact]
@@ -116,7 +111,7 @@ public class ClaudeAgentTests
         var signal = _agent.Run<AgentSignal>("do stuff", Options);
 
         Assert.Null(signal);
-        _proc.Received(2).Capture(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>());
+        Assert.Equal(2, _proc.CaptureCalls.Count);
     }
 
     [Fact]
@@ -148,6 +143,6 @@ public class ClaudeAgentTests
         var signal = _agent.Run<RefinementSignal>("refine it", Options);
 
         Assert.Null(signal);
-        _proc.Received(2).Capture(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>());
+        Assert.Equal(2, _proc.CaptureCalls.Count);
     }
 }
