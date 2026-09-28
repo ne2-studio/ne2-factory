@@ -35,6 +35,7 @@ internal interface IGitHubCli
     string CreateIssue(string label, string title, string body);
     void EditIssueLabels(int number, string? removeLabel, string? addLabel);
     void CloseIssue(int number);
+    void CommentOnIssue(int number, string body);
     IssueDetail? ViewIssue(int number, string fields);
 }
 
@@ -110,6 +111,13 @@ internal sealed class GitHubCli(IProcessRunner proc, ILogger<GitHubCli> logger) 
             logger.LogError("{Stderr}", stderr);
             Environment.Exit(1);
         }
+    }
+
+    public void CommentOnIssue(int number, string body)
+    {
+        var (_, stderr, exit) = proc.Capture("gh", ["issue", "comment", number.ToString(), "--body", body]);
+        if (exit != 0)
+            logger.LogError("{Stderr}", stderr);
     }
 
     public IssueDetail? ViewIssue(int number, string fields)

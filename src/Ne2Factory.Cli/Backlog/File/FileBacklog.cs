@@ -18,6 +18,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
 
     public IReadOnlyList<BacklogItem> ListUnrefined() => ListByState(TicketState.Unrefined);
     public IReadOnlyList<BacklogItem> ListRefined() => ListByState(TicketState.Refined);
+    public IReadOnlyList<BacklogItem> ListMissingData() => ListByState(TicketState.MissingData);
     public IReadOnlyList<BacklogItem> ListDone() => ListByState(TicketState.Done);
     public IReadOnlyList<BacklogItem> ListFailed() => ListByState(TicketState.Failed);
 
@@ -34,6 +35,16 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
     public void Requeue(int number) => SetState(number, TicketState.Unrefined);
     public void Close(int number) => SetState(number, TicketState.Done);
     public void MarkFailed(int number) => SetState(number, TicketState.Failed);
+    public void MarkRefined(int number) => SetState(number, TicketState.Refined);
+    public void MarkMissingData(int number) => SetState(number, TicketState.MissingData);
+
+    public void Comment(int number, string body)
+    {
+        var commentsDir = Path.Combine(TicketDir(number), CommentsDirName);
+        Directory.CreateDirectory(commentsDir);
+        var index = Directory.GetFiles(commentsDir).Length;
+        File.WriteAllText(Path.Combine(commentsDir, $"{index:0000}.txt"), body);
+    }
 
     private IReadOnlyList<BacklogItem> ListByState(TicketState state)
     {

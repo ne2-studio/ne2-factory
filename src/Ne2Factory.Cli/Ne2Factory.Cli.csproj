@@ -17,4 +17,15 @@
     <PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- work-ticket/refine-ticket prompts, versioned with the code that fills them in
+         (see PromptTemplates) rather than exposed as Claude Code skills. -->
+    <EmbeddedResource Include="FactoryWorker/Prompts/work-ticket.md">
+      <LogicalName>work-ticket.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="FactoryWorker/Prompts/refine-ticket.md">
+      <LogicalName>refine-ticket.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

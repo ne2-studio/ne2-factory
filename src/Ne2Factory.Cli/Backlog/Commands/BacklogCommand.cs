@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Agents;
+using Ne2Factory.Cli.FactoryWorker;
 
 namespace Ne2Factory.Cli.Backlog;
 
@@ -9,18 +10,19 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
 
         Commands:
-          list               List queued (refined/unrefined split)/done/failed tickets.
-          refine [--all]     Refine the next unrefined ticket interactively (or, with
-                                --all, every unrefined ticket in sequence). See below.
-          requeue <number>   Move a failed/blocked ticket back into the queue
-                                (unrefined).
+          list               List queued (refined/unrefined/missing-data split)/done/
+                                failed tickets.
+          refine [--all]     Refine the next unrefined ticket (or, with --all, every
+                                unrefined ticket in sequence). See below.
+          requeue <number>   Move a failed/blocked/missing-data ticket back into the
+                                queue (unrefined).
 
-        `list` and `requeue` are purely inspection/bookkeeping — they never run
-        tickets. `refine` hands the terminal to an interactive `claude` session per
-        ticket, so it can ask the reviewer questions live. Neither runs tickets
-        unattended; for that, run `ne2-factory run` instead (see `ne2-factory run
-        --help`), which polls every 30s (BACKLOG_POLL_INTERVAL to override) and
-        keeps running, picking up refined tickets.
+        All three commands run headless, same as `ne2-factory run`'s worker — there's no
+        interactive session anywhere in this pipeline. `list` and `requeue` are purely
+        inspection/bookkeeping. `refine` runs one ticket at a time through the same
+        `refine-ticket` prompt the worker uses; for continuous unattended processing of
+        the whole queue instead, run `ne2-factory run` (see `ne2-factory run --help`),
+        which polls every 30s (BACKLOG_POLL_INTERVAL to override).
 
         Tickets don't live on the local filesystem by default — this tool doesn't
         queue tickets itself, a human files them directly on the backend. Which
@@ -28,18 +30,19 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
         ("GitHub", the default, or "File" for plain text files under
         .ne2-factory/backlog):
           GitHub  file new tickets as GitHub issues with the "backlog" label;
-                  refined/failed/done are tracked via the "refined" and
-                  "backlog:failed" labels and the issue's open/closed state.
+                  refined/missing-data/failed/done are tracked via the "refined",
+                  "missing-data", and "backlog:failed" labels and the issue's
+                  open/closed state.
           File    create a numbered folder under .ne2-factory/backlog (e.g.
                   .ne2-factory/backlog/42/) containing a ticket.txt with a
                   "State:"/"Title:" header and the ticket body.
 
-        `ne2-factory backlog refine` launches one interactive `claude` session per
-        ticket (fresh context each time), using the `refine-ticket` skill, to turn
-        queued tickets into refined ones before `ne2-factory run` picks them up —
-        that's the only place in the pipeline where clarifying questions get asked;
-        the worker never asks anything. Ctrl-C at any point is safe: whatever wasn't
-        refined yet stays queued as unrefined for the next `backlog refine` run.
+        `ne2-factory backlog refine` runs the `refine-ticket` prompt against each
+        unrefined ticket in turn, posts its refinement summary (and any open questions)
+        as a comment on the ticket, and marks it `refined` or `missing-data` accordingly.
+        A ticket marked `missing-data` stays out of the queue — neither `refine` nor
+        `ne2-factory run`'s worker will pick it up again — until a human adds the missing
+        information and requeues it.
         """;
 
     public int Run(string[] args)
@@ -69,6 +72,10 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
         foreach (var item in backlog.ListRefined())
             Console.WriteLine($"  #{item.Number}  {item.Title}");
 
+        Console.WriteLine("Sin datos suficientes (esperando al humano):");
+        foreach (var item in backlog.ListMissingData())
+            Console.WriteLine($"  #{item.Number}  {item.Title}");
+
         Console.WriteLine("Hechos:");
         foreach (var item in backlog.ListDone())
             Console.WriteLine($"  #{item.Number}  {item.Title}");
@@ -78,11 +85,11 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             Console.WriteLine($"  #{item.Number}  {item.Title}");
     }
 
-    // Refines one ticket per interactive `claude` session (fresh context each
+    // Refines one ticket per headless `claude` session (fresh context each
     // time), re-checking the backlog after each session so state always comes
     // from GitHub/the file backend rather than something we track ourselves.
-    // If a session exits without the ticket actually turning refined (Ctrl-C,
-    // crash, reviewer bailed), we stop instead of looping on the same ticket.
+    // If a session ends without a parseable outcome (crash, unexpected exit),
+    // we stop instead of looping on the same ticket.
     private int CmdRefine(string[] args)
     {
         var all = args.Contains("--all");
@@ -105,38 +112,20 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             }
 
             Console.WriteLine($"Refinando #{item.Number} — {item.Title}");
-            agent.RunInteractive(BuildRefinePrompt(item));
-
-            var refined = backlog.GetItem(next.Number)?.State == TicketState.Refined;
-            if (!refined)
+            var signal = agent.RunRefinement(PromptTemplates.RefineTicket(item), new AgentOptions { SkipPermissions = true });
+            if (signal is null || string.IsNullOrWhiteSpace(signal.Outcome))
             {
-                logger.LogWarning("#{Number} sigue sin refinar; me detengo aquí.", next.Number);
+                logger.LogWarning("#{Number}: la sesión terminó sin un resultado interpretable; me detengo aquí.", next.Number);
                 return 1;
             }
 
-            Console.WriteLine($"#{next.Number} refinado.");
+            var ready = RefinementOutcome.Apply(backlog, next.Number, signal);
+            Console.WriteLine(ready
+                ? $"#{next.Number} refinado."
+                : $"#{next.Number} sigue sin datos suficientes; queda a la espera de más información.");
+
             if (!all) return 0;
         }
-    }
-
-    // Hands the skill everything it needs to know about the ticket up front —
-    // mirrors AgentRunJobs.BuildWorkTicketPrompt — so refine-ticket never has
-    // to know GitHub exists; only this class and IBacklog do.
-    private static string BuildRefinePrompt(BacklogItem item)
-    {
-        var comments = string.Join("\n", item.Comments);
-        var reference = item.Url is null ? $"#{item.Number}" : $"#{item.Number} ({item.Url})";
-        return $$"""
-            /refine-ticket
-
-            Ticket: {{reference}}
-
-            {{item.Title}}
-
-            {{item.Body ?? ""}}
-
-            {{comments}}
-            """;
     }
 
     private int CmdRequeue(string[] args)

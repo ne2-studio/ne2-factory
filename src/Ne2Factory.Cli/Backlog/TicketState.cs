@@ -7,6 +7,7 @@ internal enum TicketState
 {
     Unrefined,
     Refined,
+    MissingData,
     Failed,
     Done,
     Unknown,

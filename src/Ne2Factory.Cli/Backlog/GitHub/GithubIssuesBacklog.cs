@@ -10,24 +10,31 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
 {
     private const string QueueLabel = "backlog";
     private const string RefinedLabel = "refined";
+    private const string MissingDataLabel = "missing-data";
     private const string FailedLabel = "backlog:failed";
 
     public void EnsureLabels()
     {
         gitHubCli.CreateLabelSilently(QueueLabel, "0E8A16", "Backlog ticket queued for bin/backlog");
         gitHubCli.CreateLabelSilently(RefinedLabel, "0E8A16", "Ticket refinado, listo para bin/backlog");
+        gitHubCli.CreateLabelSilently(MissingDataLabel, "FBCA04", "Ticket refinement stalled, needs more info from the reviewer");
         gitHubCli.CreateLabelSilently(FailedLabel, "B60205", "Backlog ticket blocked, needs review before requeuing");
     }
 
     public IReadOnlyList<BacklogItem> ListUnrefined() =>
         gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels")
-            .Where(i => i.Labels?.Any(l => l.Name == RefinedLabel) != true)
+            .Where(i => i.Labels?.Any(l => l.Name is RefinedLabel or MissingDataLabel) != true)
             .Select(i => ToBacklogItem(i, TicketState.Unrefined))
             .ToArray();
 
     public IReadOnlyList<BacklogItem> ListRefined() =>
         gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number,title")
             .Select(i => ToBacklogItem(i, TicketState.Refined))
+            .ToArray();
+
+    public IReadOnlyList<BacklogItem> ListMissingData() =>
+        gitHubCli.ListIssues([QueueLabel, MissingDataLabel], "open", "number,title")
+            .Select(i => ToBacklogItem(i, TicketState.MissingData))
             .ToArray();
 
     public IReadOnlyList<BacklogItem> ListDone() =>
@@ -59,11 +66,21 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
             comments);
     }
 
-    public void Requeue(int number) => gitHubCli.EditIssueLabels(number, FailedLabel, QueueLabel);
+    public void Requeue(int number)
+    {
+        gitHubCli.EditIssueLabels(number, FailedLabel, QueueLabel);
+        gitHubCli.EditIssueLabels(number, MissingDataLabel, null);
+    }
 
     public void Close(int number) => gitHubCli.CloseIssue(number);
 
     public void MarkFailed(int number) => gitHubCli.EditIssueLabels(number, QueueLabel, FailedLabel);
+
+    public void MarkRefined(int number) => gitHubCli.EditIssueLabels(number, MissingDataLabel, RefinedLabel);
+
+    public void MarkMissingData(int number) => gitHubCli.EditIssueLabels(number, null, MissingDataLabel);
+
+    public void Comment(int number, string body) => gitHubCli.CommentOnIssue(number, body);
 
     private static BacklogItem ToBacklogItem(IssueSummary i, TicketState state) =>
         new(i.Number, i.Title, null, null, state, []);
@@ -82,6 +99,7 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
 
         if (labels.Contains(FailedLabel)) return TicketState.Failed;
         if (queued && labels.Contains(RefinedLabel)) return TicketState.Refined;
+        if (queued && labels.Contains(MissingDataLabel)) return TicketState.MissingData;
         if (queued) return TicketState.Unrefined;
         return TicketState.Unknown;
     }

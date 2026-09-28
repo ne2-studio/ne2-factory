@@ -5,10 +5,14 @@ internal interface IBacklog
     void EnsureLabels();
     IReadOnlyList<BacklogItem> ListUnrefined();
     IReadOnlyList<BacklogItem> ListRefined();
+    IReadOnlyList<BacklogItem> ListMissingData();
     IReadOnlyList<BacklogItem> ListDone();
     IReadOnlyList<BacklogItem> ListFailed();
     BacklogItem? GetItem(int number);
     void Requeue(int number);
     void Close(int number);
     void MarkFailed(int number);
+    void MarkRefined(int number);
+    void MarkMissingData(int number);
+    void Comment(int number, string body);
 }

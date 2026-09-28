@@ -16,29 +16,35 @@ internal sealed class BacklogQueueProcessor(
     ILogger<BacklogQueueProcessor> logger)
 {
     private const string WorkTicketAgent = "work-ticket";
+    private const string RefineTicketAgent = "refine-ticket";
 
     public void ProcessQueue()
     {
-        var issues = backlog.ListRefined()
-            .Select(i => i.Number)
-            .OrderBy(n => n)
-            .ToArray();
+        ProcessIssues("refinados", backlog.ListRefined(), WorkTicketAgent);
+        ProcessIssues("sin refinar", backlog.ListUnrefined(), RefineTicketAgent);
+    }
+
+    private void ProcessIssues(string label, IReadOnlyList<BacklogItem> items, string agentName)
+    {
+        var issues = items.Select(i => i.Number).OrderBy(n => n).ToArray();
 
         if (issues.Length == 0)
         {
-            logger.LogInformation("No hay issues por procesar.");
+            logger.LogInformation("No hay issues {Label} por procesar.", label);
             return;
         }
 
-        logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", issues.Length, string.Join(", ", issues.Select(n => $"#{n}")));
+        logger.LogInformation("Vistos {Count} tickets {Label} en cola: {Numbers}", issues.Length, label, string.Join(", ", issues.Select(n => $"#{n}")));
 
         foreach (var n in issues)
-            TryEnqueue(n);
+            TryEnqueue(n, agentName);
     }
 
-    private void TryEnqueue(int issueNumber)
+    private void TryEnqueue(int issueNumber, string agentName)
     {
-        var run = runs.TryCreateQueued(issueNumber, WorkTicketAgent);
+        // TryCreateQueued locks per issue number regardless of agent name, so an issue
+        // can never have a work-ticket and a refine-ticket run active at once.
+        var run = runs.TryCreateQueued(issueNumber, agentName);
         if (run is null)
         {
             logger.LogDebug("Issue #{Number} ya tiene un run activo (queued/running); lo salto.", issueNumber);
@@ -47,6 +53,6 @@ internal sealed class BacklogQueueProcessor(
 
         var jobId = backgroundJobs.Enqueue<AgentRunJobs>(job => job.Execute(run.Id));
         runs.SetHangfireJobId(run.Id, jobId);
-        logger.LogInformation("Encolado: {JobId} (issue #{Number}, run {RunId}).", jobId, issueNumber, run.Id);
+        logger.LogInformation("Encolado: {JobId} (issue #{Number}, agente {AgentName}, run {RunId}).", jobId, issueNumber, agentName, run.Id);
     }
 }

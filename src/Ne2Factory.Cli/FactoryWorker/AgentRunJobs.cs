@@ -19,6 +19,9 @@ internal sealed class AgentRunJobs(
     IAgent agent,
     ILogger<AgentRunJobs> logger)
 {
+    private const string WorkTicketAgent = "work-ticket";
+    private const string RefineTicketAgent = "refine-ticket";
+
     public void Execute(Guid runId)
     {
         var run = runs.Get(runId);
@@ -32,9 +35,16 @@ internal sealed class AgentRunJobs(
         var number = run.IssueNumber;
 
         // The ticket's state may have changed between enqueue and now (another
-        // process requeued/closed the issue in the meantime); re-verify.
+        // process requeued/closed/refined the issue in the meantime); re-verify.
+        var expectedState = run.AgentName switch
+        {
+            WorkTicketAgent => TicketState.Refined,
+            RefineTicketAgent => TicketState.Unrefined,
+            _ => (TicketState?)null,
+        };
+
         var current = backlog.GetItem(number);
-        if (current is null || current.State != TicketState.Refined)
+        if (current is null || expectedState is null || current.State != expectedState)
         {
             logger.LogInformation("Issue #{Number} ya no cumple las condiciones (su estado cambió); lo salto.", number);
             runs.Finish(runId, AgentRunStatus.Cancelled, outcome: null, error: "Issue ya no elegible (su estado cambió).");
@@ -45,9 +55,16 @@ internal sealed class AgentRunJobs(
         proc.RunInherited("git", ["pull", "--ff-only"]);
 
         logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
-        logger.LogInformation("Lanzando /work-ticket en la issue #{Number} ({Url}).", number, current.Url);
+        logger.LogInformation("Lanzando /{Agent} en la issue #{Number} ({Url}).", run.AgentName, number, current.Url);
 
-        var outcome = agent.Run(BuildWorkTicketPrompt(current), new AgentOptions { SkipPermissions = true });
+        if (run.AgentName == RefineTicketAgent)
+        {
+            ExecuteRefine(runId, number, current);
+            return;
+        }
+
+        var prompt = PromptTemplates.WorkTicket(current);
+        var outcome = agent.Run(prompt, new AgentOptions { SkipPermissions = true });
         if (outcome is null)
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
@@ -76,27 +93,20 @@ internal sealed class AgentRunJobs(
         }
     }
 
-    private static string BuildWorkTicketPrompt(BacklogItem item)
+    private void ExecuteRefine(Guid runId, int number, BacklogItem current)
     {
-        var comments = string.Join("\n", item.Comments);
-        var reference = item.Url is null ? $"#{item.Number}" : $"#{item.Number} ({item.Url})";
-        return $$"""
-            /work-ticket
+        var prompt = PromptTemplates.RefineTicket(current);
+        var signal = agent.RunRefinement(prompt, new AgentOptions { SkipPermissions = true });
+        if (signal is null || string.IsNullOrWhiteSpace(signal.Outcome))
+        {
+            logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
+            backlog.MarkFailed(number);
+            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: "Sesión sin resultado interpretable.");
+            return;
+        }
 
-            Ticket: {{reference}}
-
-            {{item.Title}}
-
-            {{item.Body ?? ""}}
-
-            {{comments}}
-
-            ---
-            This session is headless: the only way you can report your outcome back is
-            through your final message, so it is parsed programmatically. Your very last
-            message must be nothing but a single JSON object — no markdown code fences, no
-            text before or after it — with this exact shape:
-            {"status": "done" | "blocked", "reason": "<empty string if done, short explanation if blocked>"}
-            """;
+        var ready = RefinementOutcome.Apply(backlog, number, signal);
+        runs.Finish(runId, AgentRunStatus.Succeeded, signal.Outcome, error: null);
+        logger.LogInformation(ready ? "-> refinado: #{Number}" : "-> #{Number} sigue sin datos suficientes; queda a la espera de más información.", number);
     }
 }
