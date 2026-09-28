@@ -1,6 +1,7 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Backlog;
+using Ne2Factory.Cli.Common;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
@@ -24,9 +25,15 @@ internal sealed class BacklogQueueProcessor(
         ProcessIssues("sin refinar", backlog.ListUnrefined(), RefineTicketAgent);
     }
 
-    private void ProcessIssues(string label, IReadOnlyList<BacklogItem> items, string agentName)
+    private void ProcessIssues(string label, Result<IReadOnlyList<BacklogItem>> itemsResult, string agentName)
     {
-        var issues = items.Select(i => i.Number).OrderBy(n => n).ToArray();
+        if (itemsResult.IsFailure)
+        {
+            logger.LogError("No se pudo listar tickets {Label}: {Error}", label, itemsResult.Error.Message);
+            return;
+        }
+
+        var issues = itemsResult.Value.Select(i => i.Number).OrderBy(n => n).ToArray();
 
         if (issues.Length == 0)
         {

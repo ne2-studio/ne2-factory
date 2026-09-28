@@ -20,7 +20,17 @@ internal sealed class FactoryWorker(
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                queueProcessor.ProcessQueue();
+                try
+                {
+                    queueProcessor.ProcessQueue();
+                }
+                catch (Exception ex)
+                {
+                    // A tick failing (e.g. an unexpected gh/git error not already turned into a
+                    // Result) shouldn't take down the whole background service — log and retry
+                    // on the next poll instead.
+                    logger.LogError(ex, "Fallo procesando la cola del backlog; reintento en el siguiente ciclo.");
+                }
                 logger.LogInformation("Durmiendo {Interval}s antes de volver a comprobar la cola.", ctx.BacklogPollIntervalSeconds);
                 await Task.Delay(TimeSpan.FromSeconds(ctx.BacklogPollIntervalSeconds), stoppingToken);
             }

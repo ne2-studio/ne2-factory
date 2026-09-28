@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Common;
 using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli;
@@ -31,11 +32,11 @@ internal interface IGitHubCli
 {
     void CreateLabelSilently(string name, string color, string description);
     bool TryCreateLabel(string name, string color, string description, out string? error);
-    IssueSummary[] ListIssues(IEnumerable<string> labels, string state, string fields);
-    string CreateIssue(string label, string title, string body);
-    void EditIssueLabels(int number, string? removeLabel, string? addLabel);
-    void CloseIssue(int number);
-    void CommentOnIssue(int number, string body);
+    Result<IssueSummary[]> ListIssues(IEnumerable<string> labels, string state, string fields);
+    Result<string> CreateIssue(string label, string title, string body);
+    Result EditIssueLabels(int number, string? removeLabel, string? addLabel);
+    Result CloseIssue(int number);
+    Result CommentOnIssue(int number, string body);
     IssueDetail? ViewIssue(int number, string fields);
 }
 
@@ -63,7 +64,7 @@ internal sealed class GitHubCli(IProcessRunner proc, ILogger<GitHubCli> logger) 
         return false;
     }
 
-    public IssueSummary[] ListIssues(IEnumerable<string> labels, string state, string fields)
+    public Result<IssueSummary[]> ListIssues(IEnumerable<string> labels, string state, string fields)
     {
         var args = new List<string> { "issue", "list" };
         foreach (var label in labels) { args.Add("--label"); args.Add(label); }
@@ -74,23 +75,23 @@ internal sealed class GitHubCli(IProcessRunner proc, ILogger<GitHubCli> logger) 
         if (exit != 0)
         {
             logger.LogError("{Stderr}", stderr);
-            Environment.Exit(1);
+            return Result.Failure<IssueSummary[]>(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
         }
-        return JsonSerializer.Deserialize<IssueSummary[]>(stdout, JsonOptions) ?? [];
+        return Result.Success(JsonSerializer.Deserialize<IssueSummary[]>(stdout, JsonOptions) ?? []);
     }
 
-    public string CreateIssue(string label, string title, string body)
+    public Result<string> CreateIssue(string label, string title, string body)
     {
         var (stdout, stderr, exit) = proc.Capture("gh", ["issue", "create", "--label", label, "--title", title, "--body", body]);
         if (exit != 0)
         {
             logger.LogError("{Stderr}", stderr);
-            Environment.Exit(1);
+            return Result.Failure<string>(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
         }
-        return stdout.Trim();
+        return Result.Success(stdout.Trim());
     }
 
-    public void EditIssueLabels(int number, string? removeLabel, string? addLabel)
+    public Result EditIssueLabels(int number, string? removeLabel, string? addLabel)
     {
         var args = new List<string> { "issue", "edit", number.ToString() };
         if (removeLabel is not null) { args.Add("--remove-label"); args.Add(removeLabel); }
@@ -99,25 +100,31 @@ internal sealed class GitHubCli(IProcessRunner proc, ILogger<GitHubCli> logger) 
         if (exit != 0)
         {
             logger.LogError("{Stderr}", stderr);
-            Environment.Exit(1);
+            return Result.Failure(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
         }
+        return Result.Success();
     }
 
-    public void CloseIssue(int number)
+    public Result CloseIssue(int number)
     {
         var (_, stderr, exit) = proc.Capture("gh", ["issue", "close", number.ToString()]);
         if (exit != 0)
         {
             logger.LogError("{Stderr}", stderr);
-            Environment.Exit(1);
+            return Result.Failure(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
         }
+        return Result.Success();
     }
 
-    public void CommentOnIssue(int number, string body)
+    public Result CommentOnIssue(int number, string body)
     {
         var (_, stderr, exit) = proc.Capture("gh", ["issue", "comment", number.ToString(), "--body", body]);
         if (exit != 0)
+        {
             logger.LogError("{Stderr}", stderr);
+            return Result.Failure(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
+        }
+        return Result.Success();
     }
 
     public IssueDetail? ViewIssue(int number, string fields)

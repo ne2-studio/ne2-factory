@@ -1,4 +1,5 @@
 using Ne2Factory.Cli.Agents;
+using Ne2Factory.Cli.Common;
 
 namespace Ne2Factory.Cli.Backlog;
 
@@ -11,18 +12,18 @@ internal static class RefinementOutcome
     public const string Ready = "ready";
     public const string MissingData = "missing_data";
 
-    public static bool Apply(IBacklog backlog, int number, RefinementSignal signal)
+    // Result<bool> rather than plain bool: the bool (was it marked "ready"?) is only
+    // meaningful if both backlog writes actually went through — a Comment/Mark failure
+    // (e.g. `gh` unavailable) must not be reported as "refined"/"missing-data" to the caller.
+    public static Result<bool> Apply(IBacklog backlog, int number, RefinementSignal signal)
     {
-        backlog.Comment(number, FormatComment(signal));
+        var comment = backlog.Comment(number, FormatComment(signal));
+        if (comment.IsFailure) return Result.Failure<bool>(comment.Error);
 
         if (signal.Outcome == Ready)
-        {
-            backlog.MarkRefined(number);
-            return true;
-        }
+            return backlog.MarkRefined(number).Bind(() => Result.Success(true));
 
-        backlog.MarkMissingData(number);
-        return false;
+        return backlog.MarkMissingData(number).Bind(() => Result.Success(false));
     }
 
     private static string FormatComment(RefinementSignal signal)

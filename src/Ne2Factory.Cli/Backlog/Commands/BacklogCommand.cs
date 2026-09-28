@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Agents;
+using Ne2Factory.Cli.Common;
 using Ne2Factory.Cli.FactoryWorker;
 
 namespace Ne2Factory.Cli.Backlog;
@@ -65,23 +66,29 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
     private void CmdList()
     {
         Console.WriteLine("En cola, sin refinar:");
-        foreach (var item in backlog.ListUnrefined())
-            Console.WriteLine($"  #{item.Number}  {item.Title}");
+        PrintOrError(backlog.ListUnrefined());
 
         Console.WriteLine("En cola, lista para implementar:");
-        foreach (var item in backlog.ListRefined())
-            Console.WriteLine($"  #{item.Number}  {item.Title}");
+        PrintOrError(backlog.ListRefined());
 
         Console.WriteLine("Sin datos suficientes (esperando al humano):");
-        foreach (var item in backlog.ListMissingData())
-            Console.WriteLine($"  #{item.Number}  {item.Title}");
+        PrintOrError(backlog.ListMissingData());
 
         Console.WriteLine("Hechos:");
-        foreach (var item in backlog.ListDone())
-            Console.WriteLine($"  #{item.Number}  {item.Title}");
+        PrintOrError(backlog.ListDone());
 
         Console.WriteLine("Fallidos/bloqueados:");
-        foreach (var item in backlog.ListFailed())
+        PrintOrError(backlog.ListFailed());
+    }
+
+    private void PrintOrError(Result<IReadOnlyList<BacklogItem>> result)
+    {
+        if (result.IsFailure)
+        {
+            logger.LogError("  (no se pudo listar: {Error})", result.Error.Message);
+            return;
+        }
+        foreach (var item in result.Value)
             Console.WriteLine($"  #{item.Number}  {item.Title}");
     }
 
@@ -96,14 +103,28 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
 
         while (true)
         {
-            var next = backlog.ListUnrefined().OrderBy(i => i.Number).FirstOrDefault();
+            var unrefinedResult = backlog.ListUnrefined();
+            if (unrefinedResult.IsFailure)
+            {
+                logger.LogError("No se pudo listar tickets sin refinar: {Error}", unrefinedResult.Error.Message);
+                return 1;
+            }
+
+            var next = unrefinedResult.Value.OrderBy(i => i.Number).FirstOrDefault();
             if (next is null)
             {
                 Console.WriteLine("No hay tickets pendientes de refinamiento.");
                 return 0;
             }
 
-            var item = backlog.GetItem(next.Number);
+            var itemResult = backlog.GetItem(next.Number);
+            if (itemResult.IsFailure)
+            {
+                logger.LogError("No se pudo consultar #{Number}: {Error}", next.Number, itemResult.Error.Message);
+                return 1;
+            }
+
+            var item = itemResult.Value;
             if (item is null)
             {
                 logger.LogWarning("#{Number} ya no existe; lo salto.", next.Number);
@@ -119,8 +140,14 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
                 return 1;
             }
 
-            var ready = RefinementOutcome.Apply(backlog, next.Number, signal);
-            Console.WriteLine(ready
+            var readyResult = RefinementOutcome.Apply(backlog, next.Number, signal);
+            if (readyResult.IsFailure)
+            {
+                logger.LogError("#{Number}: fallo actualizando el backlog: {Error}", next.Number, readyResult.Error.Message);
+                return 1;
+            }
+
+            Console.WriteLine(readyResult.Value
                 ? $"#{next.Number} refinado."
                 : $"#{next.Number} sigue sin datos suficientes; queda a la espera de más información.");
 
@@ -136,7 +163,12 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
             logger.LogError("Uso: ne2-factory backlog requeue <número-de-ticket>");
             return 1;
         }
-        backlog.Requeue(number);
+        var result = backlog.Requeue(number);
+        if (result.IsFailure)
+        {
+            logger.LogError("No se pudo reencolar #{Number}: {Error}", number, result.Error.Message);
+            return 1;
+        }
         Console.WriteLine($"Reencolado: #{number}");
         return 0;
     }

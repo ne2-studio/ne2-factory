@@ -2,6 +2,7 @@ using Hangfire;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Agents;
 using Ne2Factory.Cli.Backlog;
+using Ne2Factory.Cli.Common;
 using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.FactoryWorker;
@@ -43,7 +44,15 @@ internal sealed class AgentRunJobs(
             _ => (TicketState?)null,
         };
 
-        var current = backlog.GetItem(number);
+        var currentResult = backlog.GetItem(number);
+        if (currentResult.IsFailure)
+        {
+            logger.LogError("-> no se pudo consultar #{Number} en el backlog: {Error}. Marco el run como fallido para reintentar en el próximo ciclo.", number, currentResult.Error.Message);
+            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: currentResult.Error.Message);
+            return;
+        }
+
+        var current = currentResult.Value;
         if (current is null || expectedState is null || current.State != expectedState)
         {
             logger.LogInformation("Issue #{Number} ya no cumple las condiciones (su estado cambió); lo salto.", number);
@@ -52,7 +61,13 @@ internal sealed class AgentRunJobs(
         }
 
         logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", number);
-        proc.RunInherited("git", ["pull", "--ff-only"]);
+        var pullExitCode = proc.RunInherited("git", ["pull", "--ff-only"]);
+        if (pullExitCode != 0)
+        {
+            logger.LogWarning("-> git pull --ff-only falló (exit {ExitCode}) para #{Number}; lo salto para revisión manual.", pullExitCode, number);
+            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: $"git pull --ff-only falló (exit {pullExitCode}).");
+            return;
+        }
 
         logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
         logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number, current.Url);
@@ -73,7 +88,7 @@ internal sealed class AgentRunJobs(
         if (outcome is null)
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
-            backlog.MarkFailed(number);
+            LogIfFailed(backlog.MarkFailed(number), number);
             runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: "Sesión sin resultado interpretable.");
             return;
         }
@@ -81,23 +96,41 @@ internal sealed class AgentRunJobs(
         switch (outcome.Status)
         {
             case "done":
-                backlog.Comment(number, FormatWorkTicketComment(outcome));
-                backlog.Close(number);
+            {
+                var comment = backlog.Comment(number, FormatWorkTicketComment(outcome));
+                var close = comment.IsSuccess ? backlog.Close(number) : comment;
+                if (close.IsFailure)
+                {
+                    logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, close.Error.Message);
+                    runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, error: close.Error.Message);
+                    break;
+                }
                 runs.Finish(runId, AgentRunStatus.Succeeded, outcome.Status, error: null);
                 logger.LogInformation("-> hecho: #{Number}", number);
                 break;
+            }
             case "blocked":
-                backlog.Comment(number, FormatWorkTicketComment(outcome));
-                backlog.MarkFailed(number);
+            {
+                var comment = backlog.Comment(number, FormatWorkTicketComment(outcome));
+                var markFailed = comment.IsSuccess ? backlog.MarkFailed(number) : comment;
+                if (markFailed.IsFailure)
+                    logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, markFailed.Error.Message);
                 runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, outcome.Reason);
                 logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(outcome.Reason) ? "" : $" ({outcome.Reason})", number);
                 break;
+            }
             default:
                 logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", outcome.Status, number);
-                backlog.MarkFailed(number);
+                LogIfFailed(backlog.MarkFailed(number), number);
                 runs.Finish(runId, AgentRunStatus.Failed, outcome.Status, error: $"Resultado desconocido: {outcome.Status}");
                 break;
         }
+    }
+
+    private void LogIfFailed(Result result, int number)
+    {
+        if (result.IsFailure)
+            logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, result.Error.Message);
     }
 
     private static string FormatWorkTicketComment(AgentSignal outcome)
@@ -113,13 +146,20 @@ internal sealed class AgentRunJobs(
         if (signal is null || string.IsNullOrWhiteSpace(signal.Outcome))
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
-            backlog.MarkFailed(number);
+            LogIfFailed(backlog.MarkFailed(number), number);
             runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: "Sesión sin resultado interpretable.");
             return;
         }
 
-        var ready = RefinementOutcome.Apply(backlog, number, signal);
+        var readyResult = RefinementOutcome.Apply(backlog, number, signal);
+        if (readyResult.IsFailure)
+        {
+            logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, readyResult.Error.Message);
+            runs.Finish(runId, AgentRunStatus.Failed, signal.Outcome, error: readyResult.Error.Message);
+            return;
+        }
+
         runs.Finish(runId, AgentRunStatus.Succeeded, signal.Outcome, error: null);
-        logger.LogInformation(ready ? "-> refinado: #{Number}" : "-> #{Number} sigue sin datos suficientes; queda a la espera de más información.", number);
+        logger.LogInformation(readyResult.Value ? "-> refinado: #{Number}" : "-> #{Number} sigue sin datos suficientes; queda a la espera de más información.", number);
     }
 }
