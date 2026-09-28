@@ -102,6 +102,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         {
             "--print", "--output-format", "json", "--json-schema", jsonSchema,
             "--model", "haiku", "--effort", "low", "--dangerously-skip-permissions",
+            "--allowed-tools", "",
             $"Reformatea la siguiente respuesta al formato exigido por el schema, sin añadir ni quitar información: {rawText}",
         };
 
