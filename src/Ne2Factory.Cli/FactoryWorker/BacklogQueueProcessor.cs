@@ -28,36 +28,23 @@ internal sealed class BacklogQueueProcessor(
             return;
         }
 
-        var issues = pending.Value.Select(i => i.Number).OrderBy(n => n).ToArray();
+        var items = pending.Value.OrderBy(i => i.Number).ToArray();
 
-        if (issues.Length == 0)
+        if (items.Length == 0)
         {
             logger.LogInformation("No hay issues por procesar.");
             return;
         }
 
-        logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", issues.Length, string.Join(", ", issues.Select(n => $"#{n}")));
+        logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", items.Length, string.Join(", ", items.Select(i => $"#{i.Number}")));
 
-        foreach (var n in issues)
-            TryEnqueue(n);
+        foreach (var item in items)
+            TryEnqueue(item);
     }
 
-    private void TryEnqueue(int issueNumber)
+    private void TryEnqueue(BacklogItem item)
     {
-        var itemResult = backlog.GetItem(issueNumber);
-        if (itemResult.IsFailure)
-        {
-            logger.LogError("No se pudo consultar el estado de la issue #{Number}: {Error}", issueNumber, itemResult.Error.Message);
-            return;
-        }
-
-        var item = itemResult.Value;
-        if (item is null)
-        {
-            logger.LogDebug("Issue #{Number} ya no existe; la salto.", issueNumber);
-            return;
-        }
-
+        var issueNumber = item.Number;
         var agentName = item.State switch
         {
             TicketState.Refined => WorkTicketAgent,

@@ -28,10 +28,14 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
     }
 
     public Result<IReadOnlyList<BacklogItem>> ListPending() =>
-        gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels")
+        gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels,body,comments")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues
                 .Where(i => i.Labels?.Any(l => l.Name == MissingDataLabel) != true)
-                .Select(i => ToBacklogItem(i, i.Labels?.Any(l => l.Name == RefinedLabel) == true ? TicketState.Refined : TicketState.Unrefined))
+                .Select(i => ToBacklogItem(
+                    i,
+                    i.Labels?.Any(l => l.Name == RefinedLabel) == true ? TicketState.Refined : TicketState.Unrefined,
+                    i.Body,
+                    FormatComments(i.Comments)))
                 .ToArray());
 
     public Result<IReadOnlyList<BacklogItem>> ListUnrefined() =>
@@ -62,10 +66,7 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
         var issue = gitHubCli.ViewIssue(number, "title,body,url,state,labels,comments");
         if (issue is null) return Result.Success<BacklogItem?>(null);
 
-        var comments = (issue.Comments ?? [])
-            .Select(c => $"-- comment by {c.Author.Login} ({c.CreatedAt}) --\n{c.Body}")
-            .ToArray();
-
+        var comments = FormatComments(issue.Comments);
         var labels = issue.Labels?.Select(l => l.Name).ToHashSet() ?? new HashSet<string>();
         return Result.Success<BacklogItem?>(new BacklogItem(
             number,
@@ -92,8 +93,13 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
 
     public Result Comment(int number, string body) => gitHubCli.CommentOnIssue(number, body);
 
-    private static BacklogItem ToBacklogItem(IssueSummary i, TicketState state) =>
-        new(i.Number, i.Title, null, null, state, []);
+    private static BacklogItem ToBacklogItem(IssueSummary i, TicketState state, string? body = null, IReadOnlyList<string>? comments = null) =>
+        new(i.Number, i.Title, body, null, state, comments ?? []);
+
+    private static IReadOnlyList<string> FormatComments(IssueComment[]? comments) =>
+        (comments ?? [])
+            .Select(c => $"-- comment by {c.Author.Login} ({c.CreatedAt}) --\n{c.Body}")
+            .ToArray();
 
     // Mirrors the label combinations the List* methods above filter by, for
     // issues fetched individually (GetItem) where the state isn't already

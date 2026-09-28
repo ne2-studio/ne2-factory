@@ -11,7 +11,9 @@ internal sealed record IssueLabel([property: JsonPropertyName("name")] string Na
 internal sealed record IssueSummary(
     [property: JsonPropertyName("number")] int Number,
     [property: JsonPropertyName("title")] string Title,
-    [property: JsonPropertyName("labels")] IssueLabel[]? Labels = null);
+    [property: JsonPropertyName("labels")] IssueLabel[]? Labels = null,
+    [property: JsonPropertyName("body")] string? Body = null,
+    [property: JsonPropertyName("comments")] IssueComment[]? Comments = null);
 
 internal sealed record IssueComment(
     [property: JsonPropertyName("author")] IssueAuthor Author,
