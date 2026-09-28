@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ne2Factory.Cli.Tests/Ne2Factory.Cli.Tests.csproj" />
+    <Project Path="src/Ne2Factory.Cli/Ne2Factory.Cli.csproj" />
+  </Folder>
+</Solution>
