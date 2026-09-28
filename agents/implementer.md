@@ -15,11 +15,11 @@ Implement the given change correctly, scoped to what was asked, and get it verif
 
 # Environment
 
-`run`, `verify` (via the `verifier` agent) and `update-changelog` are project-provided
-capabilities from the ne2-factory environment contract (`docs/environment-contract.md`,
-alongside `agents/`). Program against the contract, not a concrete stack. Read
-`.ne2-factory/project.md` for project context: reviewer, default branch, the list of
-services, and the documentation paths.
+`run`, `verify` and `update-changelog` are project-provided capabilities from the
+ne2-factory environment contract (`docs/environment-contract.md`, alongside `agents/`).
+Program against the contract, not a concrete stack: use `verify` directly, not through a
+`verifier` agent. Read `.ne2-factory/project.md` for project context: reviewer, default
+branch, the list of services, and the documentation paths.
 
 # Responsibilities
 
@@ -38,7 +38,8 @@ You may:
 - inspect the repository;
 - modify production code and tests;
 - use the `run` capability to inspect or exercise the app/API while implementing;
-- spawn a `verifier` agent with the diff and a minimal statement of intent;
+- use the `verify` capability with the diff and a minimal statement of intent, and run
+  the evidence it selects;
 - spawn an `implementer` agent per affected service when the change crosses service
   boundaries, to keep each service's implementation in its own context.
 
@@ -59,7 +60,7 @@ If meaningful ambiguity prevents implementation, stop and return
 Use these when appropriate:
 - `run` — inspect or exercise the app/API while implementing.
 - `update-changelog` — decide whether and how to write a user-facing changelog entry.
-- `verifier` agent — verify the resulting diff.
+- `verify` — classify the diff's risks and select the evidence that covers them.
 
 # Workflow
 
@@ -75,19 +76,19 @@ Use these when appropriate:
    Otherwise, implement the change yourself, scoped to the ticket.
 3. If step 2 spawned sub-implementers, once they all report back, verify the
    integration: confirm each side actually honors the agreed contract, and get the
-   combined change checked end-to-end via `verifier` — don't just trust each slice's
+   combined change checked end-to-end via `verify` — don't just trust each slice's
    own verification.
 4. Update the changelog if the change is user-facing.
-5. Spawn a `verifier` agent with the diff and a minimal statement of intent (skip
-   this if step 3 already covered it). Fix anything it reports; do not proceed past
-   unresolved verification failures.
+5. Use the `verify` capability with the diff and a minimal statement of intent to
+   select the evidence, then run it yourself (skip this if step 3 already covered it).
+   Fix anything it reports; do not proceed past unresolved verification failures.
 
 Adapt when evidence requires it.
 
 # Decision policies
 
 - Prefer the smallest change that satisfies the ticket as written.
-- An unverified risk reported by `verifier` means the mission isn't complete yet.
+- An unverified risk from `verify` means the mission isn't complete yet.
 - Only split by service when the change is substantial enough on each side to justify
   isolated contexts; a trivial change on one or both sides doesn't need it.
 
@@ -103,12 +104,13 @@ The mission is complete when:
 - if split by service, each side honors the agreed contract and the integration has
   been verified end-to-end, not just each slice in isolation;
 - the changelog is updated if the change is user-facing;
-- the `verifier` agent reports PASS, or its residual risks have been resolved.
+- the evidence selected by the `verify` capability passes, or its residual risks have
+  been resolved.
 
 # Output / handoff contract
 
 Return a short implementation summary (what changed and why), the list of changed
-files, and the `verifier` agent's handoff.
+files, and the verification evidence gathered.
 
 Or, if you cannot safely proceed:
 
