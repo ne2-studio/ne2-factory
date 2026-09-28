@@ -72,25 +72,31 @@ internal sealed class AgentRunJobs(
         logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
         logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number, current.Url);
 
-        if (run.AgentName == RefineTicketAgent)
-        {
-            ExecuteRefine(runId, number, current);
-            return;
-        }
+        var outcome = run.AgentName == RefineTicketAgent
+            ? ExecuteRefine(current)
+            : ExecuteWork(current);
 
-        ExecuteWork(runId, number, current);
+        runs.Finish(runId, outcome.Status, outcome.Outcome, outcome.Error);
     }
 
-    private void ExecuteWork(Guid runId, int number, BacklogItem current)
+    // What ExecuteWork/ExecuteRefine settled on, so Execute is the single place
+    // that calls runs.Finish (it's the one that owns runId).
+    private readonly record struct RunOutcome(AgentRunStatus Status, string? Outcome, string? Error)
     {
+        public static RunOutcome Failed(string? outcome, string? error) => new(AgentRunStatus.Failed, outcome, error);
+        public static RunOutcome Succeeded(string? outcome) => new(AgentRunStatus.Succeeded, outcome, Error: null);
+    }
+
+    private RunOutcome ExecuteWork(BacklogItem current)
+    {
+        var number = current.Number;
         var prompt = PromptTemplates.WorkTicket(current);
         var response = agent.Run<ImplementerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" });
         if (response is null)
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
             LogIfFailed(backlog.MarkFailed(number), number);
-            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: "Sesión sin resultado interpretable.");
-            return;
+            return RunOutcome.Failed(outcome: null, error: "Sesión sin resultado interpretable.");
         }
 
         switch (response.Status)
@@ -102,12 +108,10 @@ internal sealed class AgentRunJobs(
                 if (close.IsFailure)
                 {
                     logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, close.Error.Message);
-                    runs.Finish(runId, AgentRunStatus.Failed, response.Status, error: close.Error.Message);
-                    break;
+                    return RunOutcome.Failed(response.Status, error: close.Error.Message);
                 }
-                runs.Finish(runId, AgentRunStatus.Succeeded, response.Status, error: null);
                 logger.LogInformation("-> hecho: #{Number}", number);
-                break;
+                return RunOutcome.Succeeded(response.Status);
             }
             case "blocked":
             {
@@ -115,15 +119,13 @@ internal sealed class AgentRunJobs(
                 var markFailed = comment.IsSuccess ? backlog.MarkFailed(number) : comment;
                 if (markFailed.IsFailure)
                     logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, markFailed.Error.Message);
-                runs.Finish(runId, AgentRunStatus.Failed, response.Status, response.Reason);
                 logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(response.Reason) ? "" : $" ({response.Reason})", number);
-                break;
+                return RunOutcome.Failed(response.Status, response.Reason);
             }
             default:
                 logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", response.Status, number);
                 LogIfFailed(backlog.MarkFailed(number), number);
-                runs.Finish(runId, AgentRunStatus.Failed, response.Status, error: $"Resultado desconocido: {response.Status}");
-                break;
+                return RunOutcome.Failed(response.Status, error: $"Resultado desconocido: {response.Status}");
         }
     }
 
@@ -139,28 +141,27 @@ internal sealed class AgentRunJobs(
         return $"## {(response.Status == "done" ? "Done" : "Blocked")}\n\n{body ?? "(sin resumen)"}";
     }
 
-    private void ExecuteRefine(Guid runId, int number, BacklogItem current)
+    private RunOutcome ExecuteRefine(BacklogItem current)
     {
+        var number = current.Number;
         var prompt = PromptTemplates.RefineTicket(current);
         var response = agent.Run<RefinerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" });
         if (response is null || string.IsNullOrWhiteSpace(response.Outcome))
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
             LogIfFailed(backlog.MarkFailed(number), number);
-            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: "Sesión sin resultado interpretable.");
-            return;
+            return RunOutcome.Failed(outcome: null, error: "Sesión sin resultado interpretable.");
         }
 
         var readyResult = ApplyRefinement(number, response);
         if (readyResult.IsFailure)
         {
             logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, readyResult.Error.Message);
-            runs.Finish(runId, AgentRunStatus.Failed, response.Outcome, error: readyResult.Error.Message);
-            return;
+            return RunOutcome.Failed(response.Outcome, error: readyResult.Error.Message);
         }
 
-        runs.Finish(runId, AgentRunStatus.Succeeded, response.Outcome, error: null);
         logger.LogInformation(readyResult.Value ? "-> refinado: #{Number}" : "-> #{Number} sigue sin datos suficientes; queda a la espera de más información.", number);
+        return RunOutcome.Succeeded(response.Outcome);
     }
 
     // Result<bool> rather than plain bool: the bool (was it marked "ready"?) is only
