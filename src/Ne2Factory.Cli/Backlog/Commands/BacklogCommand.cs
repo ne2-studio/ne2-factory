@@ -1,11 +1,9 @@
 using Microsoft.Extensions.Logging;
-using Ne2Factory.Cli.Agents;
 using Ne2Factory.Cli.Common;
-using Ne2Factory.Cli.FactoryWorker;
 
 namespace Ne2Factory.Cli.Backlog;
 
-internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<BacklogCommand> logger)
+internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> logger)
 {
     private const string Usage = """
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
@@ -13,16 +11,13 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
         Commands:
           list               List queued (refined/unrefined/missing-data split)/done/
                                 failed tickets.
-          refine [--all]     Refine the next unrefined ticket (or, with --all, every
-                                unrefined ticket in sequence). See below.
           requeue <number>   Move a failed/blocked/missing-data ticket back into the
                                 queue (unrefined).
 
-        All three commands run headless, same as `ne2-factory run`'s worker — there's no
-        interactive session anywhere in this pipeline. `list` and `requeue` are purely
-        inspection/bookkeeping. `refine` runs one ticket at a time through the same
-        `refine-ticket` prompt the worker uses; for continuous unattended processing of
-        the whole queue instead, run `ne2-factory run` (see `ne2-factory run --help`),
+        Both commands run headless, same as `ne2-factory run`'s worker — there's no
+        interactive session anywhere in this pipeline. They are purely
+        inspection/bookkeeping. For refinement and continuous unattended processing of
+        the whole queue, run `ne2-factory run` (see `ne2-factory run --help`),
         which polls every 30s (BACKLOG_POLL_INTERVAL to override).
 
         Tickets don't live on the local filesystem by default — this tool doesn't
@@ -37,13 +32,6 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
           File    create a numbered folder under .ne2-factory/backlog (e.g.
                   .ne2-factory/backlog/42/) containing a ticket.txt with a
                   "State:"/"Title:" header and the ticket body.
-
-        `ne2-factory backlog refine` runs the `refine-ticket` prompt against each
-        unrefined ticket in turn, posts its refinement summary (and any open questions)
-        as a comment on the ticket, and marks it `refined` or `missing-data` accordingly.
-        A ticket marked `missing-data` stays out of the queue — neither `refine` nor
-        `ne2-factory run`'s worker will pick it up again — until a human adds the missing
-        information and requeues it.
         """;
 
     public int Run(string[] args)
@@ -53,7 +41,6 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
         switch (command)
         {
             case "list": CmdList(); return 0;
-            case "refine": return CmdRefine(rest);
             case "requeue": return CmdRequeue(rest);
             case "-h": case "--help": case "": Console.WriteLine(Usage); return 0;
             default:
@@ -90,69 +77,6 @@ internal sealed class BacklogCommand(IBacklog backlog, IAgent agent, ILogger<Bac
         }
         foreach (var item in result.Value)
             Console.WriteLine($"  #{item.Number}  {item.Title}");
-    }
-
-    // Refines one ticket per headless `claude` session (fresh context each
-    // time), re-checking the backlog after each session so state always comes
-    // from GitHub/the file backend rather than something we track ourselves.
-    // If a session ends without a parseable outcome (crash, unexpected exit),
-    // we stop instead of looping on the same ticket.
-    private int CmdRefine(string[] args)
-    {
-        var all = args.Contains("--all");
-
-        while (true)
-        {
-            var unrefinedResult = backlog.ListUnrefined();
-            if (unrefinedResult.IsFailure)
-            {
-                logger.LogError("No se pudo listar tickets sin refinar: {Error}", unrefinedResult.Error.Message);
-                return 1;
-            }
-
-            var next = unrefinedResult.Value.OrderBy(i => i.Number).FirstOrDefault();
-            if (next is null)
-            {
-                Console.WriteLine("No hay tickets pendientes de refinamiento.");
-                return 0;
-            }
-
-            var itemResult = backlog.GetItem(next.Number);
-            if (itemResult.IsFailure)
-            {
-                logger.LogError("No se pudo consultar #{Number}: {Error}", next.Number, itemResult.Error.Message);
-                return 1;
-            }
-
-            var item = itemResult.Value;
-            if (item is null)
-            {
-                logger.LogWarning("#{Number} ya no existe; lo salto.", next.Number);
-                if (!all) return 1;
-                continue;
-            }
-
-            Console.WriteLine($"Refinando #{item.Number} — {item.Title}");
-            var response = agent.Run<RefinerResponse>(PromptTemplates.RefineTicket(item), new AgentOptions { SkipPermissions = true, Agent = "refiner" });
-            if (response is null || string.IsNullOrWhiteSpace(response.Outcome))
-            {
-                logger.LogWarning("#{Number}: la sesión terminó sin un resultado interpretable; me detengo aquí.", next.Number);
-                return 1;
-            }
-
-            var readyResult = RefinementOutcome.Apply(backlog, next.Number, response);
-            if (readyResult.IsFailure)
-            {
-                logger.LogError("#{Number}: fallo actualizando el backlog: {Error}", next.Number, readyResult.Error.Message);
-                return 1;
-            }
-
-            Console.WriteLine(readyResult.Value
-                ? $"#{next.Number} refinado."
-                : $"#{next.Number} sigue sin datos suficientes; queda a la espera de más información.");
-
-            if (!all) return 0;
-        }
     }
 
     private int CmdRequeue(string[] args)

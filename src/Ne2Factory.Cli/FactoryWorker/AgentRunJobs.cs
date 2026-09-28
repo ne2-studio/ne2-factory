@@ -171,7 +171,7 @@ internal sealed class AgentRunJobs(
         var comment = backlog.Comment(number, FormatRefinementComment(response));
         if (comment.IsFailure) return Result.Failure<bool>(comment.Error);
 
-        if (response.Outcome == RefinementOutcome.Ready)
+        if (response.Outcome == "ready")
             return backlog.MarkRefined(number).Bind(() => Result.Success(true));
 
         return backlog.MarkMissingData(number).Bind(() => Result.Success(false));
