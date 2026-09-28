@@ -11,7 +11,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
 {
     public AgentSignal? Run(string prompt, AgentOptions options)
     {
-        var json = LastJsonObject(RunClaude(prompt, options));
+        var json = FinalResultJson(RunClaude(prompt, options));
         if (json is null) return null;
 
         var status = json.Value.TryGetProperty("status", out var s) ? s.GetString() : null;
@@ -22,7 +22,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
 
     public RefinementSignal? RunRefinement(string prompt, AgentOptions options)
     {
-        var json = LastJsonObject(RunClaude(prompt, options));
+        var json = FinalResultJson(RunClaude(prompt, options));
         if (json is null) return null;
 
         var summary = json.Value.TryGetProperty("refinement_summary", out var sum) ? sum.GetString() : null;
@@ -35,7 +35,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
 
     private string RunClaude(string prompt, AgentOptions options)
     {
-        var args = new List<string> { "--print" };
+        var args = new List<string> { "--print", "--output-format", "json" };
 
         if (options.Agent is not null)
         {
@@ -62,17 +62,22 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         return stdout;
     }
 
-    // The prompt tells the agent its final message must be nothing but a JSON
-    // object; take the last brace-delimited chunk of stdout as that message.
-    private static JsonElement? LastJsonObject(string stdout)
+    // --output-format json wraps the session in a result envelope; its "result"
+    // field is the agent's final message verbatim, which the prompt instructs
+    // to be nothing but the JSON object we actually want.
+    private static JsonElement? FinalResultJson(string stdout)
     {
-        var start = stdout.LastIndexOf('{');
-        var end = stdout.LastIndexOf('}');
-        if (start < 0 || end < start) return null;
-
         try
         {
-            using var doc = JsonDocument.Parse(stdout[start..(end + 1)]);
+            using var envelope = JsonDocument.Parse(stdout);
+            var root = envelope.RootElement;
+            if (root.TryGetProperty("is_error", out var isError) && isError.GetBoolean())
+                return null;
+
+            if (!root.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.String)
+                return null;
+
+            using var doc = JsonDocument.Parse(result.GetString()!);
             return doc.RootElement.Clone();
         }
         catch (JsonException)
