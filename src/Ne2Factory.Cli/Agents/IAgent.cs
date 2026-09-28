@@ -22,6 +22,12 @@ public sealed record AgentOptions
     public bool SkipPermissions { get; init; }
 
     public string? AllowedTools { get; init; }
+
+    // Name of a project-defined agent (agents/*.md) the session should open as,
+    // via `claude --agent <name>` — the session runs under that agent's own
+    // system prompt and contract from the start, instead of a generic session
+    // that's told by its prompt to spawn that agent as a sub-task.
+    public string? Agent { get; init; }
 }
 
 public sealed record AgentSignal(string? Status, string? Reason);

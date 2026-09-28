@@ -36,6 +36,12 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
     {
         var args = new List<string> { "--print" };
 
+        if (options.Agent is not null)
+        {
+            args.Add("--agent");
+            args.Add(options.Agent);
+        }
+
         if (options.SkipPermissions)
             args.Add("--dangerously-skip-permissions");
         else if (options.AllowedTools is not null)
