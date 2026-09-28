@@ -17,7 +17,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         """;
 
     private const string RefinementSignalSchema = """
-        {"type":"object","properties":{"refinement_summary":{"type":"string"},"refinement_outcome":{"type":"string","enum":["ready","missing_data"]},"questions":{"type":"array","items":{"type":"string"}}},"required":["refinement_summary","refinement_outcome","questions"],"additionalProperties":false}
+        {"type":"object","properties":{"refinement_summary":{"type":"string"},"refinement_outcome":{"type":"string","enum":["ready","missing_data"]},"questions":{"type":"array","items":{"type":"string"},"default":[]}},"required":["refinement_summary","refinement_outcome"],"additionalProperties":false}
         """;
 
     public AgentSignal? Run(string prompt, AgentOptions options)
@@ -40,7 +40,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         var outcome = json.Value.TryGetProperty("refinement_outcome", out var o) ? o.GetString() : null;
         var questions = json.Value.TryGetProperty("questions", out var q) && q.ValueKind == JsonValueKind.Array
             ? q.EnumerateArray().Select(e => e.GetString() ?? "").ToArray()
-            : null;
+            : [];
         return new RefinementSignal(summary, outcome, questions);
     }
 
