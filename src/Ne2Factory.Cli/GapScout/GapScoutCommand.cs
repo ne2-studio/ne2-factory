@@ -5,7 +5,7 @@ using Ne2Factory.Cli.Services;
 namespace Ne2Factory.Cli.GapScout;
 
 internal sealed class GapScoutCommand(
-    IGitHubCli gitHubCli,
+    IGitHub gitHub,
     ProjectContext ctx,
     IBackgroundJobClient backgroundJobs,
     JobStorage jobStorage,
@@ -114,7 +114,7 @@ internal sealed class GapScoutCommand(
             return 1;
         }
 
-        if (!gitHubCli.TryCreateLabel(Label, "5319E7", "Architecture initiative proposed by gap-scout, pending approval", out var error) && error is not null)
+        if (!gitHub.TryCreateLabel(Label, "5319E7", "Architecture initiative proposed by gap-scout, pending approval", out var error) && error is not null)
             logger.LogWarning("aviso: no se pudo crear la label '{Label}': {Error}", Label, error);
 
         var monitoring = jobStorage.GetMonitoringApi();

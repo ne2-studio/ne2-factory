@@ -69,13 +69,13 @@ builder.Services.AddSingleton(new RootDirectory(rootDir));
 builder.Services.AddSingleton<ProjectContext>();
 builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
 builder.Services.AddSingleton<IAgent, ClaudeAgent>();
-builder.Services.AddSingleton<IGitHubCli, GitHubCli>();
+builder.Services.AddSingleton<IGitHub, GitHub>();
 builder.Services.AddSingleton<IBacklog>(sp =>
 {
     var ctx = sp.GetRequiredService<ProjectContext>();
     return ctx.BacklogProvider.Equals("File", StringComparison.OrdinalIgnoreCase)
         ? new FileBacklog(ctx)
-        : new GithubIssuesBacklog(sp.GetRequiredService<IGitHubCli>());
+        : new GithubIssuesBacklog(sp.GetRequiredService<IGitHub>());
 });
 builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
 builder.Services.AddSingleton<BacklogCommand>();

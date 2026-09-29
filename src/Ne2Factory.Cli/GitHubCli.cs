@@ -30,7 +30,7 @@ internal sealed record IssueDetail(
     [property: JsonPropertyName("state")] string? State,
     [property: JsonPropertyName("labels")] IssueLabel[]? Labels);
 
-internal interface IGitHubCli
+internal interface IGitHub
 {
     void CreateLabelSilently(string name, string color, string description);
     bool TryCreateLabel(string name, string color, string description, out string? error);
@@ -45,7 +45,7 @@ internal interface IGitHubCli
 // Wraps `gh` invocations. Every issue query goes through `--json` and is parsed
 // here instead of relying on `gh --jq`, so behaviour doesn't depend on gh's
 // bundled jq version — the filtering logic replicates the original `--jq` filters.
-internal sealed class GitHubCli(IProcessRunner proc, ILogger<GitHubCli> logger) : IGitHubCli
+internal sealed class GitHub(IProcessRunner proc, ILogger<GitHub> logger) : IGitHub
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 

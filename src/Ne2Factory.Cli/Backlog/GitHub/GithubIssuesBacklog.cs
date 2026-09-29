@@ -12,7 +12,7 @@ namespace Ne2Factory.Cli.Backlog;
 // process; this class just forwards that Result (mapped into BacklogItem
 // shapes) rather than unwrapping it, so a genuine `gh` failure can't be
 // confused with "no issues" by whoever calls IBacklog.
-internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
+internal sealed class GithubIssuesBacklog(IGitHub gitHub) : IBacklog
 {
     private const string QueueLabel = "backlog";
     private const string RefinedLabel = "refined";
@@ -21,14 +21,14 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
 
     public void EnsureLabels()
     {
-        gitHubCli.CreateLabelSilently(QueueLabel, "0E8A16", "Backlog ticket queued for bin/backlog");
-        gitHubCli.CreateLabelSilently(RefinedLabel, "0E8A16", "Ticket refinado, listo para bin/backlog");
-        gitHubCli.CreateLabelSilently(MissingDataLabel, "FBCA04", "Ticket refinement stalled, needs more info from the reviewer");
-        gitHubCli.CreateLabelSilently(FailedLabel, "B60205", "Backlog ticket blocked, needs review before requeuing");
+        gitHub.CreateLabelSilently(QueueLabel, "0E8A16", "Backlog ticket queued for bin/backlog");
+        gitHub.CreateLabelSilently(RefinedLabel, "0E8A16", "Ticket refinado, listo para bin/backlog");
+        gitHub.CreateLabelSilently(MissingDataLabel, "FBCA04", "Ticket refinement stalled, needs more info from the reviewer");
+        gitHub.CreateLabelSilently(FailedLabel, "B60205", "Backlog ticket blocked, needs review before requeuing");
     }
 
     public Result<IReadOnlyList<BacklogItem>> ListPending() =>
-        gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels,body,comments")
+        gitHub.ListIssues([QueueLabel], "open", "number,title,labels,body,comments")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues
                 .Where(i => i.Labels?.Any(l => l.Name == MissingDataLabel) != true)
                 .Select(i => ToBacklogItem(
@@ -39,31 +39,31 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
                 .ToArray());
 
     public Result<IReadOnlyList<BacklogItem>> ListUnrefined() =>
-        gitHubCli.ListIssues([QueueLabel], "open", "number,title,labels")
+        gitHub.ListIssues([QueueLabel], "open", "number,title,labels")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues
                 .Where(i => i.Labels?.Any(l => l.Name is RefinedLabel or MissingDataLabel) != true)
                 .Select(i => ToBacklogItem(i, TicketState.Unrefined))
                 .ToArray());
 
     public Result<IReadOnlyList<BacklogItem>> ListRefined() =>
-        gitHubCli.ListIssues([QueueLabel, RefinedLabel], "open", "number,title")
+        gitHub.ListIssues([QueueLabel, RefinedLabel], "open", "number,title")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues.Select(i => ToBacklogItem(i, TicketState.Refined)).ToArray());
 
     public Result<IReadOnlyList<BacklogItem>> ListMissingData() =>
-        gitHubCli.ListIssues([QueueLabel, MissingDataLabel], "open", "number,title")
+        gitHub.ListIssues([QueueLabel, MissingDataLabel], "open", "number,title")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues.Select(i => ToBacklogItem(i, TicketState.MissingData)).ToArray());
 
     public Result<IReadOnlyList<BacklogItem>> ListDone() =>
-        gitHubCli.ListIssues([QueueLabel], "closed", "number,title")
+        gitHub.ListIssues([QueueLabel], "closed", "number,title")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues.Select(i => ToBacklogItem(i, TicketState.Done)).ToArray());
 
     public Result<IReadOnlyList<BacklogItem>> ListFailed() =>
-        gitHubCli.ListIssues([FailedLabel], "open", "number,title")
+        gitHub.ListIssues([FailedLabel], "open", "number,title")
             .Map(issues => (IReadOnlyList<BacklogItem>)issues.Select(i => ToBacklogItem(i, TicketState.Failed)).ToArray());
 
     public Result<BacklogItem?> GetItem(int number)
     {
-        var issue = gitHubCli.ViewIssue(number, "title,body,url,state,labels,comments");
+        var issue = gitHub.ViewIssue(number, "title,body,url,state,labels,comments");
         if (issue is null) return Result.Success<BacklogItem?>(null);
 
         var comments = FormatComments(issue.Comments);
@@ -79,19 +79,19 @@ internal sealed class GithubIssuesBacklog(IGitHubCli gitHubCli) : IBacklog
 
     public Result Requeue(int number)
     {
-        var removeFailed = gitHubCli.EditIssueLabels(number, FailedLabel, QueueLabel);
-        return removeFailed.IsFailure ? removeFailed : gitHubCli.EditIssueLabels(number, MissingDataLabel, null);
+        var removeFailed = gitHub.EditIssueLabels(number, FailedLabel, QueueLabel);
+        return removeFailed.IsFailure ? removeFailed : gitHub.EditIssueLabels(number, MissingDataLabel, null);
     }
 
-    public Result Close(int number) => gitHubCli.CloseIssue(number);
+    public Result Close(int number) => gitHub.CloseIssue(number);
 
-    public Result MarkFailed(int number) => gitHubCli.EditIssueLabels(number, QueueLabel, FailedLabel);
+    public Result MarkFailed(int number) => gitHub.EditIssueLabels(number, QueueLabel, FailedLabel);
 
-    public Result MarkRefined(int number) => gitHubCli.EditIssueLabels(number, MissingDataLabel, RefinedLabel);
+    public Result MarkRefined(int number) => gitHub.EditIssueLabels(number, MissingDataLabel, RefinedLabel);
 
-    public Result MarkMissingData(int number) => gitHubCli.EditIssueLabels(number, null, MissingDataLabel);
+    public Result MarkMissingData(int number) => gitHub.EditIssueLabels(number, null, MissingDataLabel);
 
-    public Result Comment(int number, string body) => gitHubCli.CommentOnIssue(number, body);
+    public Result Comment(int number, string body) => gitHub.CommentOnIssue(number, body);
 
     private static BacklogItem ToBacklogItem(IssueSummary i, TicketState state, string? body = null, IReadOnlyList<string>? comments = null) =>
         new(i.Number, i.Title, body, null, state, comments ?? []);
