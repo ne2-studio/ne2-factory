@@ -20,9 +20,6 @@ internal sealed class AgentRunJobs(
     IAgent agent,
     ILogger<AgentRunJobs> logger)
 {
-    private const string WorkTicketAgent = "implementer";
-    private const string RefineTicketAgent = "refiner";
-
     public void Execute(Guid runId)
     {
         var run = runs.Get(runId);
@@ -37,12 +34,7 @@ internal sealed class AgentRunJobs(
 
         // The ticket's state may have changed between enqueue and now (another
         // process requeued/closed/refined the issue in the meantime); re-verify.
-        var expectedState = run.AgentName switch
-        {
-            WorkTicketAgent => TicketState.Refined,
-            RefineTicketAgent => TicketState.Unrefined,
-            _ => (TicketState?)null,
-        };
+        var expectedState = TicketAgents.ExpectedState(run.AgentName);
 
         var currentResult = backlog.GetItem(number);
         if (currentResult.IsFailure)
@@ -72,7 +64,7 @@ internal sealed class AgentRunJobs(
         logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
         logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number, current.Url);
 
-        var outcome = run.AgentName == RefineTicketAgent
+        var outcome = run.AgentName == TicketAgents.Refine
             ? ExecuteRefine(current)
             : ExecuteWork(current);
 
@@ -91,7 +83,7 @@ internal sealed class AgentRunJobs(
     {
         var number = current.Number;
         var prompt = PromptTemplates.WorkTicket(current);
-        var response = agent.RunWithStructuredOutput<ImplementerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" }).Result;
+        var response = agent.RunWithStructuredOutput<ImplementerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = TicketAgents.Work }).Result;
         if (response is null)
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
@@ -145,7 +137,7 @@ internal sealed class AgentRunJobs(
     {
         var number = current.Number;
         var prompt = PromptTemplates.RefineTicket(current);
-        var response = agent.RunWithStructuredOutput<RefinerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" }).Result;
+        var response = agent.RunWithStructuredOutput<RefinerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = TicketAgents.Refine }).Result;
         if (response is null || string.IsNullOrWhiteSpace(response.Outcome))
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);

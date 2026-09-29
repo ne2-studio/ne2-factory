@@ -16,9 +16,6 @@ internal sealed class BacklogQueueProcessor(
     IBackgroundJobClient backgroundJobs,
     ILogger<BacklogQueueProcessor> logger)
 {
-    private const string WorkTicketAgent = "implementer";
-    private const string RefineTicketAgent = "refiner";
-
     public void ProcessQueue()
     {
         var pending = backlog.ListPending();
@@ -45,12 +42,7 @@ internal sealed class BacklogQueueProcessor(
     private void TryEnqueue(BacklogItem item)
     {
         var issueNumber = item.Number;
-        var agentName = item.State switch
-        {
-            TicketState.Refined => WorkTicketAgent,
-            TicketState.Unrefined => RefineTicketAgent,
-            _ => null,
-        };
+        var agentName = TicketAgents.ForState(item.State);
 
         if (agentName is null)
         {
