@@ -31,8 +31,10 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
         }
     }
 
+    ///
     /// IMPLEMENTER
     ///
+
     private Result<string> PostWork(BacklogItem current, ImplementerResult result)
     {
         int number = current.Number;
@@ -69,8 +71,10 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
         return $"## {(result.Status == "done" ? "Done" : "Blocked")}\n\n{body ?? "(sin resumen)"}";
     }
     
+    ///
     /// REFINER
     ///
+
     private Result<string> PostRefine(BacklogItem current, RefinerResult result)
     {
         var number = current.Number;

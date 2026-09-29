@@ -2,10 +2,6 @@ using Ne2Factory.Cli.Backlog;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
-// The work-ticket/refine-ticket prompts used to be Claude Code skills (`/work-ticket`,
-// `/refine-ticket`) that callers invoked by name; now they're plain text embedded in this
-// assembly, versioned alongside the code that fills them in, and never exposed to Claude
-// Code as skills. Callers pass the filled-in text as the whole session prompt directly.
 internal static class PromptTemplates
 {
     public static string WorkTicket(BacklogItem item) => Fill(Load("work-ticket"), item);
