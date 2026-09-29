@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Ne2Factory.Cli.Backlog;
+namespace Ne2Factory.Cli.Backlog.Commands;
 
 internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> logger)
 {

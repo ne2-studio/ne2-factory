@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Ne2Factory.Cli.Backlog;
+namespace Ne2Factory.Cli.Backlog.File;
 
 // Backs the backlog with plain text files under ProjectContext.BacklogDir:
 // one subfolder per ticket, named after its number, holding a `ticket.txt`
@@ -27,9 +27,9 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
     {
         var dir = TicketDir(number);
         var ticketFile = Path.Combine(dir, TicketFileName);
-        if (!File.Exists(ticketFile)) return null;
+        if (!System.IO.File.Exists(ticketFile)) return null;
 
-        var (state, title, body) = ParseTicket(File.ReadAllText(ticketFile));
+        var (state, title, body) = ParseTicket(System.IO.File.ReadAllText(ticketFile));
         return new BacklogItem(number, title, body, Url: null, state, ReadComments(dir));
     }
 
@@ -44,7 +44,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
         var commentsDir = Path.Combine(TicketDir(number), CommentsDirName);
         Directory.CreateDirectory(commentsDir);
         var index = Directory.GetFiles(commentsDir).Length;
-        File.WriteAllText(Path.Combine(commentsDir, $"{index:0000}.txt"), body);
+        System.IO.File.WriteAllText(Path.Combine(commentsDir, $"{index:0000}.txt"), body);
     }
 
     private IReadOnlyList<BacklogItem> ListByState(TicketState state) => ListByStates(s => s == state);
@@ -65,8 +65,8 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
     private void SetState(int number, TicketState state)
     {
         var ticketFile = Path.Combine(TicketDir(number), TicketFileName);
-        var (_, title, body) = ParseTicket(File.ReadAllText(ticketFile));
-        File.WriteAllText(ticketFile, FormatTicket(state, title, body));
+        var (_, title, body) = ParseTicket(System.IO.File.ReadAllText(ticketFile));
+        System.IO.File.WriteAllText(ticketFile, FormatTicket(state, title, body));
     }
 
     private string TicketDir(int number) => Path.Combine(ctx.BacklogDir, number.ToString(CultureInfo.InvariantCulture));
@@ -78,7 +78,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
 
         return Directory.GetFiles(commentsDir)
             .OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal)
-            .Select(File.ReadAllText)
+            .Select(System.IO.File.ReadAllText)
             .ToArray();
     }
 

@@ -1,7 +1,6 @@
-using Ne2Factory.Cli;
 using Ne2Factory.Cli.Common;
 
-namespace Ne2Factory.Cli.Backlog;
+namespace Ne2Factory.Cli.Backlog.GitHub;
 
 // Backs the backlog with GitHub issues: queue state lives in labels, ticket
 // context comes from the issue body/comments. Only place that maps

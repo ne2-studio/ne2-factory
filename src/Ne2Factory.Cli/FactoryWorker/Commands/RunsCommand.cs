@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Ne2Factory.Cli.FactoryWorker;
+namespace Ne2Factory.Cli.FactoryWorker.Commands;
 
 // Read-only observability over AgentRuns (.ne2-factory/database.db): what the
 // worker has run, regardless of which IBacklog backend filed the ticket.
