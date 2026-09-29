@@ -3,3 +3,4 @@ obj/
 .ne2-factory/
 appsettings.Local.json
 .idea/
+*.DotSettings.user
