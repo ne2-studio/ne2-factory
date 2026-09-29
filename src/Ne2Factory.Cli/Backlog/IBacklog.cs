@@ -7,7 +7,7 @@ namespace Ne2Factory.Cli.Backlog;
 // `gh` not authenticated, rate-limited — can't be confused with "no items"
 // or "write succeeded". Callers decide what a failure means for them
 // (skip this tick, mark a run Failed, print an error and exit 1, ...).
-internal interface IBacklog
+public interface IBacklog
 {
     void EnsureLabels();
 

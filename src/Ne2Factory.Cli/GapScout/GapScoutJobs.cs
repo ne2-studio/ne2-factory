@@ -9,7 +9,7 @@ namespace Ne2Factory.Cli.GapScout;
 // Hangfire server hosted by `ne2-factory run`, so its stdout/stderr are
 // inherited straight into that same terminal. Instantiated per job by
 // Hangfire's DI-backed job activator (see AddHangfire in Program.cs).
-public sealed class GapScoutJobs(IAgent agent, ILogger<GapScoutJobs> logger)
+public sealed class GapScoutJobs(ICodingAgent codingAgent, ILogger<GapScoutJobs> logger)
 {
     public const string AllowedTools = "Agent Bash(gh issue list *) Bash(gh issue create *) Bash(gh issue view *) Bash(gh label create *)";
 
@@ -18,7 +18,7 @@ public sealed class GapScoutJobs(IAgent agent, ILogger<GapScoutJobs> logger)
         var prompt = $"Spawn the `architecture-gap-scout` agent with:\n\nScope: {scope}\n";
 
         logger.LogInformation("gap-scout: {Scope}", scope);
-        agent.RunWithStructuredOutput<ImplementerResponse>(prompt, new AgentOptions
+        codingAgent.RunWithStructuredOutput<ImplementerResult>(prompt, new CodingAgentOptions
         {
             SkipPermissions = yolo,
             AllowedTools = yolo ? null : AllowedTools,

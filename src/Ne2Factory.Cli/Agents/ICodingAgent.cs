@@ -4,7 +4,7 @@ namespace Ne2Factory.Cli.Agents;
 
 // Abstracts spawning a headless Claude session so callers (FactoryWorker,
 // GapScoutJobs, ...) don't build `claude` CLI args by hand.
-public interface IAgent
+public interface ICodingAgent
 {
     // Runs a headless session synchronously and returns the outcome it reported as
     // its final message, deserialized into T. The JSON schema handed to `claude
@@ -14,12 +14,12 @@ public interface IAgent
     // deserializes into T (crash, manual exit, or it didn't follow the prompt's
     // reporting contract) — callers treat that as needing human review. The usage
     // metrics are filled in either way, so a failed run still reports what it cost.
-    AgentResponse<T> RunWithStructuredOutput<T>(string prompt, AgentOptions options) where T : class;
+    CodingAgentResponse<T> RunWithStructuredOutput<T>(string prompt, CodingAgentOptions options) where T : class;
 }
 
 // Outcome of one headless session plus the usage metrics `claude` reports for it
 // (summed over every `claude` invocation involved, e.g. the haiku reformat fallback).
-public sealed record AgentResponse<T> where T : class
+public sealed record CodingAgentResponse<T> where T : class
 {
     public T? Result { get; init; }
 
@@ -32,7 +32,7 @@ public sealed record AgentResponse<T> where T : class
     public double TotalCostUsd { get; init; }
 }
 
-public sealed record AgentOptions
+public sealed record CodingAgentOptions
 {
     public bool SkipPermissions { get; init; }
 
@@ -45,7 +45,7 @@ public sealed record AgentOptions
     public string? Agent { get; init; }
 }
 
-public sealed record ImplementerResponse
+public sealed record ImplementerResult
 {
     [JsonPropertyName("status")]
     public required string Status { get; init; }
@@ -57,13 +57,13 @@ public sealed record ImplementerResponse
     public string? Reason { get; init; }
 }
 
-public sealed record RefinerResponse
+public sealed record RefinerResult
 {
     [JsonPropertyName("refinement_summary")]
     public string? Summary { get; init; }
 
     [JsonPropertyName("refinement_outcome")]
-    public string? Outcome { get; init; }
+    public required string Outcome { get; init; }
 
     [JsonPropertyName("questions")]
     public IReadOnlyList<string>? Questions { get; init; }

@@ -10,14 +10,14 @@ namespace Ne2Factory.Cli.Agents;
 // Only place that knows how to invoke the `claude` binary: builds its flags, hands off
 // execution to IProcessRunner, and parses the JSON outcome the prompt instructed the
 // agent to report as its final message.
-internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logger) : IAgent
+internal sealed class ClaudeCodingAgent(IProcessRunner proc, ILogger<ClaudeCodingAgent> logger) : ICodingAgent
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
-    public AgentResponse<T> RunWithStructuredOutput<T>(string prompt, AgentOptions options) where T : class
+    public CodingAgentResponse<T> RunWithStructuredOutput<T>(string prompt, CodingAgentOptions options) where T : class
     {
         var jsonExample = BuildJsonExample<T>();
         var stdout = RunClaude(WithReportingInstruction(prompt, jsonExample), options);
@@ -83,7 +83,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         {jsonExample}
         """;
 
-    private string RunClaude(string prompt, AgentOptions options)
+    private string RunClaude(string prompt, CodingAgentOptions options)
     {
         var args = new List<string> { "--print", "--output-format", "json" };
 
@@ -117,7 +117,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
     // nothing but the JSON object we need. If the agent ignored that anyway, fall back to
     // a small, cheap Haiku session whose only job is to reformat the raw "result" text
     // into the required shape.
-    private AgentResponse<T> ResolveStructured<T>(string stdout, string jsonExample) where T : class
+    private CodingAgentResponse<T> ResolveStructured<T>(string stdout, string jsonExample) where T : class
     {
         var envelope = ParseEnvelope(stdout);
         if (envelope is not { IsError: false } e) return ToResponse<T>(null, envelope?.Usage ?? default);
@@ -136,7 +136,7 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         return ToResponse<T>(null, usage);
     }
 
-    private static AgentResponse<T> ToResponse<T>(T? result, Usage usage) where T : class => new()
+    private static CodingAgentResponse<T> ToResponse<T>(T? result, Usage usage) where T : class => new()
     {
         Result = result,
         NumTurns = usage.NumTurns,

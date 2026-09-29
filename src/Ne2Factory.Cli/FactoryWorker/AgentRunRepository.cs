@@ -3,7 +3,7 @@ using SQLite;
 namespace Ne2Factory.Cli.FactoryWorker;
 
 [StoreAsText]
-internal enum AgentRunStatus
+public enum AgentRunStatus
 {
     Queued,
     Running,
@@ -16,7 +16,7 @@ internal enum AgentRunStatus
 // job/state tables (which only know how to run things, not why) and of
 // GitHub (which only tracks the ticket's current label state, not history).
 [Table("AgentRuns")]
-internal sealed class AgentRun
+public sealed class AgentRun
 {
     [PrimaryKey]
     public Guid Id { get; set; }
@@ -37,7 +37,7 @@ internal sealed class AgentRun
     public string? Error { get; set; }
 }
 
-internal interface IAgentRunRepository
+public interface IAgentRunRepository
 {
     // Inserts a Queued run for this issue, unless one is already Queued/Running
     // for it (enforced by a unique index, not a race-prone read-then-write

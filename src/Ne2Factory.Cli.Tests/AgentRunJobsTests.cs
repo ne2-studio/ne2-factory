@@ -13,12 +13,17 @@ public class AgentRunJobsTests
     private readonly InMemoryBacklog _backlog = new();
     private readonly InMemoryAgentRunRepository _runs = new();
     private readonly FakeProcessRunner _proc = new();
-    private readonly FakeAgent _agent = new();
+    private readonly FakeCodingAgent _codingAgent = new();
     private readonly AgentRunJobs _sut;
 
     public AgentRunJobsTests()
     {
-        _sut = new AgentRunJobs(_backlog, _runs, _proc, _agent, NullLogger<AgentRunJobs>.Instance);
+        _sut = new AgentRunJobs(
+            _backlog,
+            _runs,
+            _proc,
+            new Agent(_codingAgent, _backlog, NullLogger<Agent>.Instance),
+            NullLogger<AgentRunJobs>.Instance);
     }
 
     private static AgentRun CreateQueuedRun(string agentName) => new()
@@ -56,7 +61,7 @@ public class AgentRunJobsTests
         Assert.Null(finished.Outcome);
         Assert.NotNull(finished.Error);
         Assert.Empty(_proc.RunInheritedCalls);
-        Assert.Empty(_agent.RunCalls);
+        Assert.Empty(_codingAgent.RunCalls);
     }
 
     [Fact]
@@ -87,7 +92,7 @@ public class AgentRunJobsTests
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Contains("1", finished.Error);
-        Assert.Empty(_agent.RunCalls);
+        Assert.Empty(_codingAgent.RunCalls);
     }
 
     [Fact]
@@ -96,7 +101,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Refined));
-        _agent.OnRun = (_, _) => null;
+        _codingAgent.OnRun = (_, _) => null;
 
         _sut.Execute(run.Id);
 
@@ -112,7 +117,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Refined));
-        _agent.OnRun = (_, _) => new ImplementerResponse { Status = "done", Summary = "todo listo" };
+        _codingAgent.OnRun = (_, _) => new ImplementerResult { Status = "done", Summary = "todo listo" };
 
         _sut.Execute(run.Id);
 
@@ -131,7 +136,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Refined));
-        _agent.OnRun = (_, _) => new ImplementerResponse { Status = "done", Summary = "todo listo" };
+        _codingAgent.OnRun = (_, _) => new ImplementerResult { Status = "done", Summary = "todo listo" };
         _backlog.CloseFailure = ApplicationError.ExternalDependencyUnavailable("gh close falló");
 
         _sut.Execute(run.Id);
@@ -148,7 +153,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Refined));
-        _agent.OnRun = (_, _) => new ImplementerResponse { Status = "blocked", Reason = "falta acceso" };
+        _codingAgent.OnRun = (_, _) => new ImplementerResult { Status = "blocked", Reason = "falta acceso" };
 
         _sut.Execute(run.Id);
 
@@ -165,7 +170,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Refined));
-        _agent.OnRun = (_, _) => new ImplementerResponse { Status = "weird" };
+        _codingAgent.OnRun = (_, _) => new ImplementerResult { Status = "weird" };
 
         _sut.Execute(run.Id);
 
@@ -181,7 +186,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Unrefined));
-        _agent.OnRun = (_, _) => null;
+        _codingAgent.OnRun = (_, _) => null;
 
         _sut.Execute(run.Id);
 
@@ -197,7 +202,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Unrefined));
-        _agent.OnRun = (_, _) => new RefinerResponse { Outcome = "ready", Summary = "listo" };
+        _codingAgent.OnRun = (_, _) => new RefinerResult { Outcome = "ready", Summary = "listo" };
 
         _sut.Execute(run.Id);
 
@@ -215,7 +220,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Unrefined));
-        _agent.OnRun = (_, _) => new RefinerResponse
+        _codingAgent.OnRun = (_, _) => new RefinerResult
         {
             Outcome = "missing_data",
             Summary = "faltan datos",
@@ -236,7 +241,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Unrefined));
-        _agent.OnRun = (_, _) => new RefinerResponse { Outcome = "ready", Summary = "listo" };
+        _codingAgent.OnRun = (_, _) => new RefinerResult { Outcome = "ready", Summary = "listo" };
         _backlog.MarkRefinedFailure = ApplicationError.ExternalDependencyUnavailable("gh label falló");
 
         _sut.Execute(run.Id);
@@ -255,7 +260,7 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("refiner");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Unrefined));
-        _agent.OnRun = (_, _) => new RefinerResponse { Outcome = "ready", Summary = "listo" };
+        _codingAgent.OnRun = (_, _) => new RefinerResult { Outcome = "ready", Summary = "listo" };
         _backlog.CommentFailure = ApplicationError.ExternalDependencyUnavailable("gh comment falló");
 
         _sut.Execute(run.Id);

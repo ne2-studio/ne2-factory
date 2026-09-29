@@ -68,7 +68,7 @@ builder.Services.AddSerilog((sp, loggerConfig) => loggerConfig
 builder.Services.AddSingleton(new RootDirectory(rootDir));
 builder.Services.AddSingleton<ProjectContext>();
 builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
-builder.Services.AddSingleton<IAgent, ClaudeAgent>();
+builder.Services.AddSingleton<ICodingAgent, ClaudeCodingAgent>();
 builder.Services.AddSingleton<IGitHub, GitHub>();
 builder.Services.AddSingleton<IBacklog>(sp =>
 {
@@ -82,6 +82,7 @@ builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<RunsCommand>();
 builder.Services.AddSingleton<GapScoutCommand>();
 builder.Services.AddHostedService<FactoryWorker>();
+builder.Services.AddScoped<Agent>();
 
 var dataDir = ProjectContext.DataDirFor(rootDir);
 Directory.CreateDirectory(dataDir);

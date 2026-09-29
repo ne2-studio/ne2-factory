@@ -4,16 +4,16 @@ using Ne2Factory.Cli.Agents;
 
 namespace Ne2Factory.Cli.Tests;
 
-public class ClaudeAgentTests
+public class ClaudeCodingAgentTests
 {
-    private static readonly AgentOptions Options = new() { SkipPermissions = true };
+    private static readonly CodingAgentOptions Options = new() { SkipPermissions = true };
 
     private readonly FakeProcessRunner _proc = new();
-    private readonly ClaudeAgent _agent;
+    private readonly ClaudeCodingAgent _codingAgent;
 
-    public ClaudeAgentTests()
+    public ClaudeCodingAgentTests()
     {
-        _agent = new ClaudeAgent(_proc, NullLogger<ClaudeAgent>.Instance);
+        _codingAgent = new ClaudeCodingAgent(_proc, NullLogger<ClaudeCodingAgent>.Instance);
     }
 
     private void StubCapture(string primaryStdout, string? haikuStdout = null)
@@ -48,7 +48,7 @@ public class ClaudeAgentTests
             ["total_cost_usd"] = 0.058,
         }));
 
-        var response = _agent.RunWithStructuredOutput<ImplementerResponse>("do stuff", Options);
+        var response = _codingAgent.RunWithStructuredOutput<ImplementerResult>("do stuff", Options);
 
         Assert.NotNull(response.Result);
         Assert.Equal(3, response.NumTurns);
@@ -68,7 +68,7 @@ public class ClaudeAgentTests
         StubCapture(Env("no es json", 0.05),
             Env(JsonSerializer.Serialize(new { status = "done", summary = "s", reason = "r" }), 0.01));
 
-        var response = _agent.RunWithStructuredOutput<ImplementerResponse>("do stuff", Options);
+        var response = _codingAgent.RunWithStructuredOutput<ImplementerResult>("do stuff", Options);
 
         Assert.NotNull(response.Result);
         Assert.Equal(2, response.NumTurns);
@@ -84,7 +84,7 @@ public class ClaudeAgentTests
         var stdout = Envelope(result: resultJson);
         StubCapture(stdout);
 
-        var response = _agent.RunWithStructuredOutput<ImplementerResponse>("do stuff", Options).Result;
+        var response = _codingAgent.RunWithStructuredOutput<ImplementerResult>("do stuff", Options).Result;
 
         Assert.NotNull(response);
         Assert.Equal("done", response!.Status);
@@ -101,7 +101,7 @@ public class ClaudeAgentTests
         var haikuStdout = Envelope(result: haikuResultJson);
         StubCapture(primaryStdout, haikuStdout);
 
-        var response = _agent.RunWithStructuredOutput<ImplementerResponse>("do stuff", Options).Result;
+        var response = _codingAgent.RunWithStructuredOutput<ImplementerResult>("do stuff", Options).Result;
 
         Assert.NotNull(response);
         Assert.Equal("blocked", response!.Status);
@@ -120,7 +120,7 @@ public class ClaudeAgentTests
         var stdout = Envelope(isError: true, result: resultJson);
         StubCapture(stdout);
 
-        var response = _agent.RunWithStructuredOutput<ImplementerResponse>("do stuff", Options).Result;
+        var response = _codingAgent.RunWithStructuredOutput<ImplementerResult>("do stuff", Options).Result;
 
         Assert.Null(response);
         // is_error corta el flujo: ni siquiera se intenta el fallback de haiku.
@@ -137,7 +137,7 @@ public class ClaudeAgentTests
         var haikuStdout = Envelope(result: haikuResultJson);
         StubCapture(primaryStdout, haikuStdout);
 
-        var response = _agent.RunWithStructuredOutput<ImplementerResponse>("do stuff", Options).Result;
+        var response = _codingAgent.RunWithStructuredOutput<ImplementerResult>("do stuff", Options).Result;
 
         Assert.Null(response);
         Assert.Equal(2, _proc.CaptureCalls.Count);
@@ -155,7 +155,7 @@ public class ClaudeAgentTests
         var stdout = Envelope(result: resultJson);
         StubCapture(stdout);
 
-        var response = _agent.RunWithStructuredOutput<RefinerResponse>("refine it", Options).Result;
+        var response = _codingAgent.RunWithStructuredOutput<RefinerResult>("refine it", Options).Result;
 
         Assert.NotNull(response);
         Assert.Equal("falta info", response!.Summary);
@@ -170,7 +170,7 @@ public class ClaudeAgentTests
         var haikuStdout = Envelope(result: "still not json");
         StubCapture(primaryStdout, haikuStdout);
 
-        var response = _agent.RunWithStructuredOutput<RefinerResponse>("refine it", Options).Result;
+        var response = _codingAgent.RunWithStructuredOutput<RefinerResult>("refine it", Options).Result;
 
         Assert.Null(response);
         Assert.Equal(2, _proc.CaptureCalls.Count);
@@ -182,17 +182,17 @@ public class ClaudeAgentTests
         var resultJson = JsonSerializer.Serialize(new { status = "done", summary = "s", reason = "r" });
         StubCapture(Envelope(result: resultJson));
 
-        _agent.RunWithStructuredOutput<ImplementerResponse>("do stuff", Options);
+        _codingAgent.RunWithStructuredOutput<ImplementerResult>("do stuff", Options);
 
         var sentPrompt = Assert.Single(_proc.CaptureCalls).Args[^1];
         Assert.Contains("do stuff", sentPrompt);
-        Assert.Contains(ClaudeAgent.BuildJsonExample<ImplementerResponse>(), sentPrompt);
+        Assert.Contains(ClaudeCodingAgent.BuildJsonExample<ImplementerResult>(), sentPrompt);
     }
 
     [Fact]
     public void BuildJsonExample_UsesJsonPropertyNames_WithPlaceholderValues()
     {
-        var example = ClaudeAgent.BuildJsonExample<ImplementerResponse>();
+        var example = ClaudeCodingAgent.BuildJsonExample<ImplementerResult>();
 
         using var doc = JsonDocument.Parse(example);
         var root = doc.RootElement;
@@ -205,7 +205,7 @@ public class ClaudeAgentTests
     [Fact]
     public void BuildJsonExample_TurnsArrayPropertiesIntoASingleElementPlaceholderArray()
     {
-        var example = ClaudeAgent.BuildJsonExample<RefinerResponse>();
+        var example = ClaudeCodingAgent.BuildJsonExample<RefinerResult>();
 
         using var doc = JsonDocument.Parse(example);
         var questions = doc.RootElement.GetProperty("questions");

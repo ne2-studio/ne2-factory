@@ -1,6 +1,6 @@
 namespace Ne2Factory.Cli.Backlog;
 
-internal sealed record BacklogItem(
+public sealed record BacklogItem(
     int Number,
     string Title,
     string? Body,

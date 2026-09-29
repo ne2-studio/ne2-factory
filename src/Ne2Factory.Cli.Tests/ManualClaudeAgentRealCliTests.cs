@@ -12,16 +12,16 @@ namespace Ne2Factory.Cli.Tests;
 [Trait("Category", "Manual")]
 public class ManualClaudeAgentRealCliTests
 {
-    private readonly ClaudeAgent _agent = new(
+    private readonly ClaudeCodingAgent _codingAgent = new(
         new ProcessRunner(LoggerFactory.Create(b => b.AddConsole()).CreateLogger<ProcessRunner>()),
-        LoggerFactory.Create(b => b.AddConsole()).CreateLogger<ClaudeAgent>());
+        LoggerFactory.Create(b => b.AddConsole()).CreateLogger<ClaudeCodingAgent>());
 
     [Fact]
     public void RunWithStructuredOutput_ImplementerResponse_AgainstRealClaudeCli()
     {
-        var response = _agent.RunWithStructuredOutput<ImplementerResponse>(
+        var response = _codingAgent.RunWithStructuredOutput<ImplementerResult>(
             "Esto es una prueba de humo. No hagas nada más que reportar tu resultado: status done, summary 'prueba de humo ok', reason vacío.",
-            new AgentOptions { SkipPermissions = true }).Result;
+            new CodingAgentOptions { SkipPermissions = true }).Result;
 
         Assert.NotNull(response);
         Assert.Equal("done", response!.Status);
@@ -31,10 +31,10 @@ public class ManualClaudeAgentRealCliTests
     [Fact]
     public void RunWithStructuredOutput_RefinerResponse_AgainstRealClaudeCli()
     {
-        var response = _agent.RunWithStructuredOutput<RefinerResponse>(
+        var response = _codingAgent.RunWithStructuredOutput<RefinerResult>(
             "Esto es una prueba de humo. No hagas nada más que reportar tu resultado: refinement_outcome ready, " +
             "refinement_summary 'prueba de humo ok', sin questions.",
-            new AgentOptions { SkipPermissions = true }).Result;
+            new CodingAgentOptions { SkipPermissions = true }).Result;
 
         Assert.NotNull(response);
         Assert.Equal("ready", response!.Outcome);
