@@ -17,11 +17,11 @@ public class ManualClaudeAgentRealCliTests
         LoggerFactory.Create(b => b.AddConsole()).CreateLogger<ClaudeAgent>());
 
     [Fact]
-    public void Run_ImplementerResponse_AgainstRealClaudeCli()
+    public void RunWithStructuredOutput_ImplementerResponse_AgainstRealClaudeCli()
     {
-        var response = _agent.Run<ImplementerResponse>(
+        var response = _agent.RunWithStructuredOutput<ImplementerResponse>(
             "Esto es una prueba de humo. No hagas nada más que reportar tu resultado: status done, summary 'prueba de humo ok', reason vacío.",
-            new AgentOptions { SkipPermissions = true });
+            new AgentOptions { SkipPermissions = true }).Result;
 
         Assert.NotNull(response);
         Assert.Equal("done", response!.Status);
@@ -29,12 +29,12 @@ public class ManualClaudeAgentRealCliTests
     }
 
     [Fact]
-    public void Run_RefinerResponse_AgainstRealClaudeCli()
+    public void RunWithStructuredOutput_RefinerResponse_AgainstRealClaudeCli()
     {
-        var response = _agent.Run<RefinerResponse>(
+        var response = _agent.RunWithStructuredOutput<RefinerResponse>(
             "Esto es una prueba de humo. No hagas nada más que reportar tu resultado: refinement_outcome ready, " +
             "refinement_summary 'prueba de humo ok', sin questions.",
-            new AgentOptions { SkipPermissions = true });
+            new AgentOptions { SkipPermissions = true }).Result;
 
         Assert.NotNull(response);
         Assert.Equal("ready", response!.Outcome);

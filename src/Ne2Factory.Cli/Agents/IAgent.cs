@@ -10,10 +10,26 @@ public interface IAgent
     // its final message, deserialized into T. The JSON schema handed to `claude
     // --json-schema` is built dynamically from T, so callers just describe the shape
     // they need instead of hand-writing (and keeping in sync) a raw schema string.
-    // Null means the session ended without a result that deserializes into T (crash,
-    // manual exit, or it didn't follow the prompt's reporting contract) — callers
-    // treat that as needing human review.
-    T? Run<T>(string prompt, AgentOptions options) where T : class;
+    // AgentResponse.Result is null when the session ended without a result that
+    // deserializes into T (crash, manual exit, or it didn't follow the prompt's
+    // reporting contract) — callers treat that as needing human review. The usage
+    // metrics are filled in either way, so a failed run still reports what it cost.
+    AgentResponse<T> RunWithStructuredOutput<T>(string prompt, AgentOptions options) where T : class;
+}
+
+// Outcome of one headless session plus the usage metrics `claude` reports for it
+// (summed over every `claude` invocation involved, e.g. the haiku reformat fallback).
+public sealed record AgentResponse<T> where T : class
+{
+    public T? Result { get; init; }
+
+    public int NumTurns { get; init; }
+
+    public int DurationMs { get; init; }
+
+    public int DurationApiMs { get; init; }
+
+    public double TotalCostUsd { get; init; }
 }
 
 public sealed record AgentOptions

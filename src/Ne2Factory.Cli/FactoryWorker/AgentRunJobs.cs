@@ -91,7 +91,7 @@ internal sealed class AgentRunJobs(
     {
         var number = current.Number;
         var prompt = PromptTemplates.WorkTicket(current);
-        var response = agent.Run<ImplementerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" });
+        var response = agent.RunWithStructuredOutput<ImplementerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "implementer" }).Result;
         if (response is null)
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);
@@ -145,7 +145,7 @@ internal sealed class AgentRunJobs(
     {
         var number = current.Number;
         var prompt = PromptTemplates.RefineTicket(current);
-        var response = agent.Run<RefinerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" });
+        var response = agent.RunWithStructuredOutput<RefinerResponse>(prompt, new AgentOptions { SkipPermissions = true, Agent = "refiner" }).Result;
         if (response is null || string.IsNullOrWhiteSpace(response.Outcome))
         {
             logger.LogWarning("-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.", number);

@@ -17,12 +17,24 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
-    public T? Run<T>(string prompt, AgentOptions options) where T : class
+    public AgentResponse<T> RunWithStructuredOutput<T>(string prompt, AgentOptions options) where T : class
     {
         var jsonExample = BuildJsonExample<T>();
         var stdout = RunClaude(WithReportingInstruction(prompt, jsonExample), options);
         return ResolveStructured<T>(stdout, jsonExample);
     }
+
+    // What the `claude --output-format json` envelope reports about a session.
+    private readonly record struct Usage(int NumTurns, int DurationMs, int DurationApiMs, double TotalCostUsd)
+    {
+        public static Usage operator +(Usage a, Usage b) => new(
+            a.NumTurns + b.NumTurns,
+            a.DurationMs + b.DurationMs,
+            a.DurationApiMs + b.DurationApiMs,
+            a.TotalCostUsd + b.TotalCostUsd);
+    }
+
+    private sealed record Envelope(bool IsError, string? ResultText, Usage Usage);
 
     // Built from T's own shape (property names, following its JsonPropertyName mapping)
     // rather than a hand-written schema, so the example the agent sees can never drift
@@ -105,27 +117,37 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
     // nothing but the JSON object we need. If the agent ignored that anyway, fall back to
     // a small, cheap Haiku session whose only job is to reformat the raw "result" text
     // into the required shape.
-    private T? ResolveStructured<T>(string stdout, string jsonExample) where T : class
+    private AgentResponse<T> ResolveStructured<T>(string stdout, string jsonExample) where T : class
     {
         var envelope = ParseEnvelope(stdout);
-        if (envelope is not { IsError: false } e) return null;
+        if (envelope is not { IsError: false } e) return ToResponse<T>(null, envelope?.Usage ?? default);
 
-        if (e.ResultText is not { } resultText) return null;
+        if (e.ResultText is not { } resultText) return ToResponse<T>(null, e.Usage);
 
         if (TryDeserialize<T>(resultText, out var fromResult))
-            return fromResult;
+            return ToResponse(fromResult, e.Usage);
 
         logger.LogWarning("result no deserializa en {Type}; lanzo una sesión de reformateo con haiku.", typeof(T).Name);
-        var reformatted = RunReformatFallback(resultText, jsonExample);
-        if (reformatted is { } fromFallbackText && TryDeserialize<T>(fromFallbackText, out var fromFallback))
-            return fromFallback;
+        var fallback = RunReformatFallback(resultText, jsonExample);
+        var usage = e.Usage + (fallback?.Usage ?? default);
+        if (fallback is { IsError: false, ResultText: { } fromFallbackText } && TryDeserialize<T>(fromFallbackText, out var fromFallback))
+            return ToResponse(fromFallback, usage);
 
-        return null;
+        return ToResponse<T>(null, usage);
     }
+
+    private static AgentResponse<T> ToResponse<T>(T? result, Usage usage) where T : class => new()
+    {
+        Result = result,
+        NumTurns = usage.NumTurns,
+        DurationMs = usage.DurationMs,
+        DurationApiMs = usage.DurationApiMs,
+        TotalCostUsd = usage.TotalCostUsd,
+    };
 
     // Cheap last resort: no tools, no permissions, low effort — its only job is
     // turning already-produced free text into the shape the example demands.
-    private string? RunReformatFallback(string rawText, string jsonExample)
+    private Envelope? RunReformatFallback(string rawText, string jsonExample)
     {
         var prompt = WithReportingInstruction(
             $"Reformatea la siguiente respuesta al formato exigido, sin añadir ni quitar información: {rawText}",
@@ -146,11 +168,10 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
         if (!string.IsNullOrWhiteSpace(stderr))
             logger.LogWarning("{Stderr}", stderr);
 
-        var envelope = ParseEnvelope(stdout);
-        return envelope is { IsError: false, ResultText: { } resultText } ? resultText : null;
+        return ParseEnvelope(stdout);
     }
 
-    private static (bool IsError, string? ResultText)? ParseEnvelope(string stdout)
+    private static Envelope? ParseEnvelope(string stdout)
     {
         try
         {
@@ -163,7 +184,13 @@ internal sealed class ClaudeAgent(IProcessRunner proc, ILogger<ClaudeAgent> logg
                 ? r.GetString()
                 : null;
 
-            return (isError, resultText);
+            var usage = new Usage(
+                root.TryGetProperty("num_turns", out var turns) && turns.TryGetInt32(out var t) ? t : 0,
+                root.TryGetProperty("duration_ms", out var dur) && dur.TryGetInt32(out var d) ? d : 0,
+                root.TryGetProperty("duration_api_ms", out var api) && api.TryGetInt32(out var a) ? a : 0,
+                root.TryGetProperty("total_cost_usd", out var cost) && cost.TryGetDouble(out var c) ? c : 0);
+
+            return new Envelope(isError, resultText, usage);
         }
         catch (JsonException)
         {
