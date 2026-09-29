@@ -29,54 +29,59 @@ public sealed class AgentRunJobs(
         }
 
         runs.MarkRunning(runId);
-        var number = run.IssueNumber;
 
-        // The ticket's state may have changed between enqueue and now (another
-        // process requeued/closed/refined the issue in the meantime); re-verify.
-        var expectedState = TicketAgents.ExpectedState(run.AgentName);
-
-        var currentResult = backlog.GetItem(number);
-        if (currentResult.IsFailure)
+        try
         {
-            logger.LogError("-> no se pudo consultar #{Number} en el backlog: {Error}. Marco el run como fallido para reintentar en el próximo ciclo.", number, currentResult.Error.Message);
-            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: currentResult.Error.Message);
-            return;
-        }
+            var number = run.IssueNumber;
+            var current = backlog.GetItem(number);
 
-        var current = currentResult.Value;
-        if (current is null || expectedState is null || current.State != expectedState)
+            // The ticket's state may have changed between enqueue and now (another
+            // process requeued/closed/refined the issue in the meantime); re-verify.
+            var expectedState = TicketAgents.ExpectedState(run.AgentName);
+            
+            if (current is null || expectedState is null || current.State != expectedState)
+            {
+                logger.LogInformation("Issue #{Number} ya no cumple las condiciones (su estado cambió); lo salto.",
+                    number);
+                runs.Finish(runId, AgentRunStatus.Cancelled, outcome: null,
+                    error: "Issue ya no elegible (su estado cambió).");
+                return;
+            }
+
+            logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", number);
+            var pullExitCode = proc.RunInherited("git", ["pull", "--ff-only"]);
+            if (pullExitCode != 0)
+            {
+                logger.LogWarning(
+                    "-> git pull --ff-only falló (exit {ExitCode}) para #{Number}; lo salto para revisión manual.",
+                    pullExitCode, number);
+                runs.Finish(runId, AgentRunStatus.Failed, outcome: null,
+                    error: $"git pull --ff-only falló (exit {pullExitCode}).");
+                return;
+            }
+
+            logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
+            logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number,
+                current.Url);
+
+            var outcome = agent.GenerateAndProcessResponse(run.AgentName, current);
+
+            if (outcome.Outcome is null)
+            {
+                logger.LogWarning(
+                    "-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.",
+                    number);
+
+                backlog.MarkFailed(number);
+            }
+
+            runs.Finish(runId, outcome.Status, outcome: outcome.Outcome, error: outcome.Error);
+        }
+        catch (BacklogException ex)
         {
-            logger.LogInformation("Issue #{Number} ya no cumple las condiciones (su estado cambió); lo salto.", number);
-            runs.Finish(runId, AgentRunStatus.Cancelled, outcome: null, error: "Issue ya no elegible (su estado cambió).");
-            return;
+            logger.LogError("-> no se pudo consultar #{Number} en el backlog: {Error}. Marco el run como fallido para reintentar en el próximo ciclo.", run.IssueNumber, ex.Message);
+            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: ex.Message);
         }
-
-        logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", number);
-        var pullExitCode = proc.RunInherited("git", ["pull", "--ff-only"]);
-        if (pullExitCode != 0)
-        {
-            logger.LogWarning("-> git pull --ff-only falló (exit {ExitCode}) para #{Number}; lo salto para revisión manual.", pullExitCode, number);
-            runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: $"git pull --ff-only falló (exit {pullExitCode}).");
-            return;
-        }
-
-        logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
-        logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number, current.Url);
-        
-        var outcome = agent.GenerateAndProcessResponse(run.AgentName, current, number);
-        
-        if (outcome.Outcome is null)
-        {
-            logger.LogWarning(
-                "-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.",
-                number);
-
-            Result result = backlog.MarkFailed(number);
-            if (result.IsFailure)
-                logger.LogError("-> fallo actualizando el backlog para #{Number}: {Error}", number, result.Error.Message);
-        }
-
-        runs.Finish(runId, outcome.Status, outcome: outcome.Outcome, error: outcome.Error);
     }
 
     // What ExecuteWork/ExecuteRefine settled on, so Execute is the single place

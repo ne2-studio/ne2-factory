@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Ne2Factory.Cli.Common;
 
 namespace Ne2Factory.Cli.Backlog;
 
@@ -53,30 +52,32 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
     private void CmdList()
     {
         Console.WriteLine("En cola, sin refinar:");
-        PrintOrError(backlog.ListUnrefined());
+        PrintOrError(backlog.ListUnrefined);
 
         Console.WriteLine("En cola, lista para implementar:");
-        PrintOrError(backlog.ListRefined());
+        PrintOrError(backlog.ListRefined);
 
         Console.WriteLine("Sin datos suficientes (esperando al humano):");
-        PrintOrError(backlog.ListMissingData());
+        PrintOrError(backlog.ListMissingData);
 
         Console.WriteLine("Hechos:");
-        PrintOrError(backlog.ListDone());
+        PrintOrError(backlog.ListDone);
 
         Console.WriteLine("Fallidos/bloqueados:");
-        PrintOrError(backlog.ListFailed());
+        PrintOrError(backlog.ListFailed);
     }
 
-    private void PrintOrError(Result<IReadOnlyList<BacklogItem>> result)
+    private void PrintOrError(Func<IReadOnlyList<BacklogItem>> list)
     {
-        if (result.IsFailure)
+        try
         {
-            logger.LogError("  (no se pudo listar: {Error})", result.Error.Message);
-            return;
+            foreach (var item in list())
+                Console.WriteLine($"  #{item.Number}  {item.Title}");
         }
-        foreach (var item in result.Value)
-            Console.WriteLine($"  #{item.Number}  {item.Title}");
+        catch (BacklogException ex)
+        {
+            logger.LogError("  (no se pudo listar: {Error})", ex.Message);
+        }
     }
 
     private int CmdRequeue(string[] args)
@@ -87,10 +88,13 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
             logger.LogError("Uso: ne2-factory backlog requeue <número-de-ticket>");
             return 1;
         }
-        var result = backlog.Requeue(number);
-        if (result.IsFailure)
+        try
         {
-            logger.LogError("No se pudo reencolar #{Number}: {Error}", number, result.Error.Message);
+            backlog.Requeue(number);
+        }
+        catch (BacklogException ex)
+        {
+            logger.LogError("No se pudo reencolar #{Number}: {Error}", number, ex.Message);
             return 1;
         }
         Console.WriteLine($"Reencolado: #{number}");

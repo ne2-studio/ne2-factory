@@ -1,5 +1,4 @@
 using System.Globalization;
-using Ne2Factory.Cli.Common;
 
 namespace Ne2Factory.Cli.Backlog;
 
@@ -17,36 +16,35 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
 
     public void EnsureLabels() => Directory.CreateDirectory(ctx.BacklogDir);
 
-    public Result<IReadOnlyList<BacklogItem>> ListPending() => Result.Success(ListByStates(s => s is TicketState.Unrefined or TicketState.Refined));
-    public Result<IReadOnlyList<BacklogItem>> ListUnrefined() => Result.Success(ListByState(TicketState.Unrefined));
-    public Result<IReadOnlyList<BacklogItem>> ListRefined() => Result.Success(ListByState(TicketState.Refined));
-    public Result<IReadOnlyList<BacklogItem>> ListMissingData() => Result.Success(ListByState(TicketState.MissingData));
-    public Result<IReadOnlyList<BacklogItem>> ListDone() => Result.Success(ListByState(TicketState.Done));
-    public Result<IReadOnlyList<BacklogItem>> ListFailed() => Result.Success(ListByState(TicketState.Failed));
+    public IReadOnlyList<BacklogItem> ListPending() => ListByStates(s => s is TicketState.Unrefined or TicketState.Refined);
+    public IReadOnlyList<BacklogItem> ListUnrefined() => ListByState(TicketState.Unrefined);
+    public IReadOnlyList<BacklogItem> ListRefined() => ListByState(TicketState.Refined);
+    public IReadOnlyList<BacklogItem> ListMissingData() => ListByState(TicketState.MissingData);
+    public IReadOnlyList<BacklogItem> ListDone() => ListByState(TicketState.Done);
+    public IReadOnlyList<BacklogItem> ListFailed() => ListByState(TicketState.Failed);
 
-    public Result<BacklogItem?> GetItem(int number)
+    public BacklogItem? GetItem(int number)
     {
         var dir = TicketDir(number);
         var ticketFile = Path.Combine(dir, TicketFileName);
-        if (!File.Exists(ticketFile)) return Result.Success<BacklogItem?>(null);
+        if (!File.Exists(ticketFile)) return null;
 
         var (state, title, body) = ParseTicket(File.ReadAllText(ticketFile));
-        return Result.Success<BacklogItem?>(new BacklogItem(number, title, body, Url: null, state, ReadComments(dir)));
+        return new BacklogItem(number, title, body, Url: null, state, ReadComments(dir));
     }
 
-    public Result Requeue(int number) { SetState(number, TicketState.Unrefined); return Result.Success(); }
-    public Result Close(int number) { SetState(number, TicketState.Done); return Result.Success(); }
-    public Result MarkFailed(int number) { SetState(number, TicketState.Failed); return Result.Success(); }
-    public Result MarkRefined(int number) { SetState(number, TicketState.Refined); return Result.Success(); }
-    public Result MarkMissingData(int number) { SetState(number, TicketState.MissingData); return Result.Success(); }
+    public void Requeue(int number) => SetState(number, TicketState.Unrefined);
+    public void Close(int number) => SetState(number, TicketState.Done);
+    public void MarkFailed(int number) => SetState(number, TicketState.Failed);
+    public void MarkRefined(int number) => SetState(number, TicketState.Refined);
+    public void MarkMissingData(int number) => SetState(number, TicketState.MissingData);
 
-    public Result Comment(int number, string body)
+    public void Comment(int number, string body)
     {
         var commentsDir = Path.Combine(TicketDir(number), CommentsDirName);
         Directory.CreateDirectory(commentsDir);
         var index = Directory.GetFiles(commentsDir).Length;
         File.WriteAllText(Path.Combine(commentsDir, $"{index:0000}.txt"), body);
-        return Result.Success();
     }
 
     private IReadOnlyList<BacklogItem> ListByState(TicketState state) => ListByStates(s => s == state);
@@ -58,7 +56,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
         return Directory.GetDirectories(ctx.BacklogDir)
             .Select(dir => int.TryParse(Path.GetFileName(dir), out var number) ? number : (int?)null)
             .Where(number => number.HasValue)
-            .Select(number => GetItem(number!.Value).Value)
+            .Select(number => GetItem(number!.Value))
             .Where(item => item is not null && matches(item.State))
             .Select(item => item!)
             .ToArray();

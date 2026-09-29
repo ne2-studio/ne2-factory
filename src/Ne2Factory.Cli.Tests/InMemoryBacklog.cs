@@ -23,57 +23,53 @@ internal sealed class InMemoryBacklog : IBacklog
     public void EnsureLabels() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(EnsureLabels)}.");
 
-    public Result<IReadOnlyList<BacklogItem>> ListPending() =>
-        Result.Success((IReadOnlyList<BacklogItem>)items.Values
+    public IReadOnlyList<BacklogItem> ListPending() =>
+        items.Values
             .Where(i => i.State is TicketState.Unrefined or TicketState.Refined)
-            .ToArray());
+            .ToArray();
 
-    public Result<IReadOnlyList<BacklogItem>> ListUnrefined() =>
+    public IReadOnlyList<BacklogItem> ListUnrefined() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListUnrefined)}.");
 
-    public Result<IReadOnlyList<BacklogItem>> ListRefined() =>
+    public IReadOnlyList<BacklogItem> ListRefined() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListRefined)}.");
 
-    public Result<IReadOnlyList<BacklogItem>> ListMissingData() =>
+    public IReadOnlyList<BacklogItem> ListMissingData() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListMissingData)}.");
 
-    public Result<IReadOnlyList<BacklogItem>> ListDone() =>
+    public IReadOnlyList<BacklogItem> ListDone() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListDone)}.");
 
-    public Result<IReadOnlyList<BacklogItem>> ListFailed() =>
+    public IReadOnlyList<BacklogItem> ListFailed() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListFailed)}.");
 
-    public Result<BacklogItem?> GetItem(int number) =>
-        GetItemFailure is { } error ? Result.Failure<BacklogItem?>(error) : Result.Success(Get(number));
+    public BacklogItem? GetItem(int number) =>
+        GetItemFailure is { } error ? throw new BacklogException(error) : Get(number);
 
-    public Result Requeue(int number) =>
+    public void Requeue(int number) =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(Requeue)}.");
 
-    public Result Close(int number) => ApplyState(number, CloseFailure, TicketState.Done);
+    public void Close(int number) => ApplyState(number, CloseFailure, TicketState.Done);
 
-    public Result MarkFailed(int number) => ApplyState(number, MarkFailedFailure, TicketState.Failed);
+    public void MarkFailed(int number) => ApplyState(number, MarkFailedFailure, TicketState.Failed);
 
-    public Result MarkRefined(int number) => ApplyState(number, MarkRefinedFailure, TicketState.Refined);
+    public void MarkRefined(int number) => ApplyState(number, MarkRefinedFailure, TicketState.Refined);
 
-    public Result MarkMissingData(int number) => ApplyState(number, MarkMissingDataFailure, TicketState.MissingData);
+    public void MarkMissingData(int number) => ApplyState(number, MarkMissingDataFailure, TicketState.MissingData);
 
-    public Result Comment(int number, string body)
+    public void Comment(int number, string body)
     {
-        if (CommentFailure is { } error) return Result.Failure(error);
+        if (CommentFailure is { } error) throw new BacklogException(error);
 
         if (items.TryGetValue(number, out var item))
             items[number] = item with { Comments = [.. item.Comments, body] };
-
-        return Result.Success();
     }
 
-    private Result ApplyState(int number, ApplicationError? failure, TicketState state)
+    private void ApplyState(int number, ApplicationError? failure, TicketState state)
     {
-        if (failure is { } error) return Result.Failure(error);
+        if (failure is { } error) throw new BacklogException(error);
 
         if (items.TryGetValue(number, out var item))
             items[number] = item with { State = state };
-
-        return Result.Success();
     }
 }

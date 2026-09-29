@@ -51,14 +51,9 @@ internal sealed class FactoryWorker(
 
     private void ProcessQueue()
     {
-        var pending = backlog.ListPending();
-        if (pending.IsFailure)
-        {
-            logger.LogError("No se pudo listar tickets pendientes: {Error}", pending.Error.Message);
-            return;
-        }
-
-        var items = pending.Value.OrderBy(i => i.Number).ToArray();
+        var items = backlog.ListPending()
+            .OrderBy(i => i.Number)
+            .ToArray();
 
         if (items.Length == 0)
         {
@@ -69,7 +64,9 @@ internal sealed class FactoryWorker(
         logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", items.Length, string.Join(", ", items.Select(i => $"#{i.Number}")));
 
         foreach (var item in items)
+        {
             TryEnqueue(item);
+        }
     }
 
     private void TryEnqueue(BacklogItem item)
