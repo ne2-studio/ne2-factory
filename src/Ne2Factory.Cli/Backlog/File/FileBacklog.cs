@@ -20,6 +20,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
     public IReadOnlyList<BacklogItem> ListUnrefined() => ListByState(TicketState.Unrefined);
     public IReadOnlyList<BacklogItem> ListRefined() => ListByState(TicketState.Refined);
     public IReadOnlyList<BacklogItem> ListMissingData() => ListByState(TicketState.MissingData);
+    public IReadOnlyList<BacklogItem> ListInReview() => ListByState(TicketState.InReview);
     public IReadOnlyList<BacklogItem> ListDone() => ListByState(TicketState.Done);
     public IReadOnlyList<BacklogItem> ListFailed() => ListByState(TicketState.Failed);
 
@@ -38,6 +39,7 @@ internal sealed class FileBacklog(ProjectContext ctx) : IBacklog
     public void MarkFailed(int number) => SetState(number, TicketState.Failed);
     public void MarkRefined(int number) => SetState(number, TicketState.Refined);
     public void MarkMissingData(int number) => SetState(number, TicketState.MissingData);
+    public void MarkInReview(int number) => SetState(number, TicketState.InReview);
 
     public void Comment(int number, string body)
     {

@@ -8,6 +8,7 @@ public enum TicketState
     Unrefined,
     Refined,
     MissingData,
+    InReview,
     Failed,
     Done,
     Unknown,

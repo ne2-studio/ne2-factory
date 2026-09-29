@@ -8,10 +8,10 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
         Usage: ne2-factory backlog <command>   (from the root of the repo being worked on)
 
         Commands:
-          list               List queued (refined/unrefined/missing-data split)/done/
-                                failed tickets.
-          requeue <number>   Move a failed/blocked/missing-data ticket back into the
-                                queue (unrefined).
+          list               List queued (refined/unrefined/missing-data split)/
+                                in-review/done/failed tickets.
+          requeue <number>   Move a failed/blocked/missing-data/in-review ticket back
+                                into the queue.
 
         Both commands run headless, same as `ne2-factory run`'s worker — there's no
         interactive session anywhere in this pipeline. They are purely
@@ -25,9 +25,9 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
         ("GitHub", the default, or "File" for plain text files under
         .ne2-factory/backlog):
           GitHub  file new tickets as GitHub issues with the "backlog" label;
-                  refined/missing-data/failed/done are tracked via the "refined",
-                  "missing-data", and "backlog:failed" labels and the issue's
-                  open/closed state.
+                  refined/missing-data/in-review/failed/done are tracked via the
+                  "refined", "missing-data", "in-review", and "backlog:failed"
+                  labels and the issue's open/closed state.
           File    create a numbered folder under .ne2-factory/backlog (e.g.
                   .ne2-factory/backlog/42/) containing a ticket.txt with a
                   "State:"/"Title:" header and the ticket body.
@@ -59,6 +59,9 @@ internal sealed class BacklogCommand(IBacklog backlog, ILogger<BacklogCommand> l
 
         Console.WriteLine("Sin datos suficientes (esperando al humano):");
         PrintOrError(backlog.ListMissingData);
+
+        Console.WriteLine("En revisión (pull request abierto):");
+        PrintOrError(backlog.ListInReview);
 
         Console.WriteLine("Hechos:");
         PrintOrError(backlog.ListDone);

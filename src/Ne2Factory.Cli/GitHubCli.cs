@@ -30,6 +30,8 @@ internal sealed record IssueDetail(
     [property: JsonPropertyName("state")] string? State,
     [property: JsonPropertyName("labels")] IssueLabel[]? Labels);
 
+internal sealed record PullRequestSummary([property: JsonPropertyName("url")] string Url);
+
 internal interface IGitHub
 {
     void CreateLabelSilently(string name, string color, string description);
@@ -40,6 +42,8 @@ internal interface IGitHub
     Result CloseIssue(int number);
     Result CommentOnIssue(int number, string body);
     IssueDetail? ViewIssue(int number, string fields);
+    Result<string?> FindOpenPullRequest(string head);
+    Result<string> CreatePullRequest(string head, string baseBranch, string title, string body);
 }
 
 // Wraps `gh` invocations. Every issue query goes through `--json` and is parsed
@@ -138,5 +142,29 @@ internal sealed class GitHub(IProcessRunner proc, ILogger<GitHub> logger) : IGit
             return null;
         }
         return JsonSerializer.Deserialize<IssueDetail>(stdout, JsonOptions);
+    }
+
+    // URL of the open PR whose head is `head`, or null when there isn't one.
+    public Result<string?> FindOpenPullRequest(string head)
+    {
+        var (stdout, stderr, exit) = proc.Capture("gh", ["pr", "list", "--head", head, "--state", "open", "--json", "url"]);
+        if (exit != 0)
+        {
+            logger.LogError("{Stderr}", stderr);
+            return Result.Failure<string?>(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
+        }
+        var prs = JsonSerializer.Deserialize<PullRequestSummary[]>(stdout, JsonOptions) ?? [];
+        return Result.Success(prs.FirstOrDefault()?.Url);
+    }
+
+    public Result<string> CreatePullRequest(string head, string baseBranch, string title, string body)
+    {
+        var (stdout, stderr, exit) = proc.Capture("gh", ["pr", "create", "--head", head, "--base", baseBranch, "--title", title, "--body", body]);
+        if (exit != 0)
+        {
+            logger.LogError("{Stderr}", stderr);
+            return Result.Failure<string>(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
+        }
+        return Result.Success(stdout.Trim());
     }
 }

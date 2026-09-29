@@ -13,6 +13,7 @@ using Ne2Factory.Cli.Backlog.GitHub;
 using Ne2Factory.Cli.Configuration;
 using Ne2Factory.Cli.FactoryWorker;
 using Ne2Factory.Cli.FactoryWorker.Commands;
+using Ne2Factory.Cli.FactoryWorker.Publishing;
 using Ne2Factory.Cli.GapScout;
 using Ne2Factory.Cli.Services;
 using Serilog;
@@ -44,6 +45,11 @@ const string RunUsage = """
     so there is never anyone to answer a prompt — only run this when you're
     comfortable leaving it fully unattended.
 
+    Each implemented ticket lands on its own branch (factory/issue-<n>, cut from
+    origin's default branch) and is handed over as a pull request; the issue is
+    labeled "in-review" and closes when the PR is merged. The working tree must
+    be clean, and is left on the default branch after every ticket.
+
     The worker stops (exits) if a ticket ends without a clear done/blocked
     signal — that needs a human look before resuming; requeue/fix the issue
     and run `ne2-factory run` again.
@@ -74,6 +80,7 @@ builder.Services.AddSingleton<ProjectContext>();
 builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
 builder.Services.AddSingleton<ICodingAgent, ClaudeCodingAgent>();
 builder.Services.AddSingleton<IGitHub, GitHub>();
+builder.Services.AddSingleton<IGit, Git>();
 builder.Services.AddSingleton<IBacklog>(sp =>
 {
     var ctx = sp.GetRequiredService<ProjectContext>();
@@ -81,6 +88,16 @@ builder.Services.AddSingleton<IBacklog>(sp =>
         ? new FileBacklog(ctx)
         : new GithubIssuesBacklog(sp.GetRequiredService<IGitHub>());
 });
+// Follows the backlog provider: GitHub issues get a GitHub pull request, the
+// File backlog has nowhere to open one and keeps the branch local.
+builder.Services.AddSingleton<IChangePublisher>(sp =>
+{
+    var ctx = sp.GetRequiredService<ProjectContext>();
+    return ctx.BacklogProvider.Equals("File", StringComparison.OrdinalIgnoreCase)
+        ? new LocalBranchPublisher()
+        : new GitHubPullRequestPublisher(sp.GetRequiredService<IGit>(), sp.GetRequiredService<IGitHub>());
+});
+builder.Services.AddSingleton<TicketWorkspace>();
 builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
 builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<RunsCommand>();
@@ -91,8 +108,8 @@ builder.Services.AddScoped<Agent>();
 var dataDir = ProjectContext.DataDirFor(rootDir);
 Directory.CreateDirectory(dataDir);
 builder.Services.AddHangfire(config => config.UseSQLiteStorage(Path.Combine(dataDir, "database.db")));
-// WorkerCount = 1: AgentRunJobs runs `git pull` + the agent against the same
-// working directory, so jobs must run sequentially, not in parallel.
+// WorkerCount = 1: AgentRunJobs checks out the ticket branch and runs the agent
+// against the same working directory, so jobs must run sequentially, not in parallel.
 builder.Services.AddHangfireServer(options => options.WorkerCount = 1);
 
 using var host = builder.Build();

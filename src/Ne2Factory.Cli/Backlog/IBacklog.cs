@@ -15,6 +15,7 @@ public interface IBacklog
     IReadOnlyList<BacklogItem> ListUnrefined();
     IReadOnlyList<BacklogItem> ListRefined();
     IReadOnlyList<BacklogItem> ListMissingData();
+    IReadOnlyList<BacklogItem> ListInReview();
     IReadOnlyList<BacklogItem> ListDone();
     IReadOnlyList<BacklogItem> ListFailed();
     BacklogItem? GetItem(int number);
@@ -23,5 +24,8 @@ public interface IBacklog
     void MarkFailed(int number);
     void MarkRefined(int number);
     void MarkMissingData(int number);
+    // Implemented and handed over for review; closing it is up to the reviewer
+    // (for GitHub, merging the pull request).
+    void MarkInReview(int number);
     void Comment(int number, string body);
 }

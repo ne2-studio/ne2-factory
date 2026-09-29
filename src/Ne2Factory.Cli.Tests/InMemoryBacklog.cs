@@ -15,6 +15,7 @@ internal sealed class InMemoryBacklog : IBacklog
     public ApplicationError? MarkFailedFailure { get; set; }
     public ApplicationError? MarkRefinedFailure { get; set; }
     public ApplicationError? MarkMissingDataFailure { get; set; }
+    public ApplicationError? MarkInReviewFailure { get; set; }
 
     public void Add(BacklogItem item) => items[item.Number] = item;
 
@@ -37,6 +38,9 @@ internal sealed class InMemoryBacklog : IBacklog
     public IReadOnlyList<BacklogItem> ListMissingData() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListMissingData)}.");
 
+    public IReadOnlyList<BacklogItem> ListInReview() =>
+        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListInReview)}.");
+
     public IReadOnlyList<BacklogItem> ListDone() =>
         throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListDone)}.");
 
@@ -56,6 +60,8 @@ internal sealed class InMemoryBacklog : IBacklog
     public void MarkRefined(int number) => ApplyState(number, MarkRefinedFailure, TicketState.Refined);
 
     public void MarkMissingData(int number) => ApplyState(number, MarkMissingDataFailure, TicketState.MissingData);
+
+    public void MarkInReview(int number) => ApplyState(number, MarkInReviewFailure, TicketState.InReview);
 
     public void Comment(int number, string body)
     {

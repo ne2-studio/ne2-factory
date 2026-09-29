@@ -5,9 +5,9 @@ using Ne2Factory.Cli.Common;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
-public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> logger)
+public class Agent(ICodingAgent codingAgent, IBacklog backlog, TicketWorkspace workspace, ILogger<Agent> logger)
 {
-    public Result<string> GenerateAndProcessResponse(string agentName, BacklogItem current)
+    public Result<string> GenerateAndProcessResponse(string agentName, BacklogItem current, string baseBranch)
     {
         var prompt = agentName == TicketAgents.Refine
             ? PromptTemplates.RefineTicket(current)
@@ -25,7 +25,7 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
         {
             var outcome = agentName == TicketAgents.Refine
                 ? PostRefine(current, (RefinerResult)result)
-                : PostWork(current, (ImplementerResult)result);
+                : PostWork(current, (ImplementerResult)result, baseBranch);
 
             return outcome;
         }
@@ -35,7 +35,7 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
     /// IMPLEMENTER
     ///
 
-    private Result<string> PostWork(BacklogItem current, ImplementerResult result)
+    private Result<string> PostWork(BacklogItem current, ImplementerResult result, string baseBranch)
     {
         int number = current.Number;
         
@@ -43,15 +43,22 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
         {
             case "done":
             {
-                backlog.Comment(number, FormatWorkTicketComment(result));
-                backlog.Close(number);
+                var delivered = workspace.Deliver(current, baseBranch, result.Summary);
+                if (delivered.IsFailure)
+                {
+                    backlog.Comment(number, FormatDeliveryFailedComment(result, delivered.Error));
+                    return Result.Failure<string>(delivered.Error);
+                }
 
-                logger.LogInformation("-> hecho: #{Number}", number);
+                backlog.Comment(number, FormatInReviewComment(result, delivered.Value));
+                backlog.MarkInReview(number);
+
+                logger.LogInformation("-> en revisión: #{Number} ({Reference})", number, delivered.Value);
                 return result.Status;
             }
             case "blocked":
             {
-                backlog.Comment(number, FormatWorkTicketComment(result));
+                backlog.Comment(number, FormatBlockedComment(result));
                 backlog.MarkFailed(number);
 
                 logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(result.Reason) ? "" : $" ({result.Reason})", number);
@@ -65,11 +72,17 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
         }
     }
     
-    private static string FormatWorkTicketComment(ImplementerResult result)
-    {
-        var body = !string.IsNullOrWhiteSpace(result.Summary) ? result.Summary : result.Reason;
-        return $"## {(result.Status == "done" ? "Done" : "Blocked")}\n\n{body ?? "(sin resumen)"}";
-    }
+    private static string FormatInReviewComment(ImplementerResult result, string reference) =>
+        $"## In review\n\n{reference}\n\n{SummaryOrPlaceholder(result.Summary)}";
+
+    private static string FormatDeliveryFailedComment(ImplementerResult result, ApplicationError error) =>
+        $"## Delivery failed\n\n{error.Message}\n\n{SummaryOrPlaceholder(result.Summary)}";
+
+    private static string FormatBlockedComment(ImplementerResult result) =>
+        $"## Blocked\n\n{SummaryOrPlaceholder(result.Reason)}";
+
+    private static string SummaryOrPlaceholder(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? "(sin resumen)" : text;
     
     ///
     /// REFINER

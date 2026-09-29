@@ -1,7 +1,6 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Backlog;
-using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
@@ -15,7 +14,7 @@ namespace Ne2Factory.Cli.FactoryWorker;
 public sealed class AgentRunJobs(
     IBacklog backlog,
     IAgentRunRepository runs,
-    IProcessRunner proc,
+    TicketWorkspace workspace,
     Agent agent,
     ILogger<AgentRunJobs> logger)
 {
@@ -48,36 +47,48 @@ public sealed class AgentRunJobs(
                 return;
             }
 
-            logger.LogInformation("Actualizando repo (git pull --ff-only) antes de procesar #{Number}.", number);
-            var pullExitCode = proc.RunInherited("git", ["pull", "--ff-only"]);
-            if (pullExitCode != 0)
+            // Only the implementer changes code, so only it gets its own branch; the
+            // refiner just reads the up-to-date base.
+            var onTicketBranch = run.AgentName == TicketAgents.Work;
+
+            logger.LogInformation("Actualizando repo antes de procesar #{Number}.", number);
+            var prepared = workspace.Prepare(number, onTicketBranch);
+            if (prepared.IsFailure)
             {
-                logger.LogWarning(
-                    "-> git pull --ff-only falló (exit {ExitCode}) para #{Number}; lo salto para revisión manual.",
-                    pullExitCode, number);
-                runs.Finish(runId, AgentRunStatus.Failed, outcome: null,
-                    error: $"git pull --ff-only falló (exit {pullExitCode}).");
+                logger.LogWarning("-> no se pudo preparar el repo para #{Number}: {Error}. Lo salto para revisión manual.",
+                    number, prepared.Error.Message);
+                runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: prepared.Error.Message);
                 return;
             }
 
-            logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
-            logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number,
-                current.Url);
-
-            var result = agent.GenerateAndProcessResponse(run.AgentName, current);
-
-            if (result.IsFailure)
+            var baseBranch = prepared.Value;
+            string? outcome = null;
+            try
             {
-                logger.LogWarning(
-                    "-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.",
-                    number);
+                logger.LogInformation("Ticket: #{Number} {Title}", number, current.Title);
+                logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number,
+                    current.Url);
 
-                backlog.MarkFailed(number);
-                runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: result.Error.Message);
-                return;
+                var result = agent.GenerateAndProcessResponse(run.AgentName, current, baseBranch);
+
+                if (result.IsFailure)
+                {
+                    logger.LogWarning("-> {Error}. Marco #{Number} como fallido para revisión manual.",
+                        result.Error.Message, number);
+
+                    backlog.MarkFailed(number);
+                    runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: result.Error.Message);
+                    return;
+                }
+
+                outcome = result.Value;
+                runs.Finish(runId, AgentRunStatus.Succeeded, outcome: result.Value, error: null);
             }
-
-            runs.Finish(runId, AgentRunStatus.Succeeded, outcome: result.Value, error: null);
+            finally
+            {
+                if (onTicketBranch)
+                    workspace.Restore(number, baseBranch, discardBranch: outcome == "blocked");
+            }
         }
         catch (BacklogException ex)
         {

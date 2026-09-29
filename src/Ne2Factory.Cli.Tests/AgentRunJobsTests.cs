@@ -3,6 +3,7 @@ using Ne2Factory.Cli.Agents;
 using Ne2Factory.Cli.Backlog;
 using Ne2Factory.Cli.Common;
 using Ne2Factory.Cli.FactoryWorker;
+using Ne2Factory.Cli.FactoryWorker.Publishing;
 
 namespace Ne2Factory.Cli.Tests;
 
@@ -10,19 +11,23 @@ public class AgentRunJobsTests
 {
     private const int IssueNumber = 42;
 
+    private const string TicketBranch = "factory/issue-42";
+
     private readonly InMemoryBacklog _backlog = new();
     private readonly InMemoryAgentRunRepository _runs = new();
-    private readonly FakeProcessRunner _proc = new();
+    private readonly FakeGit _git = new();
+    private readonly FakeChangePublisher _publisher = new();
     private readonly FakeCodingAgent _codingAgent = new();
     private readonly AgentRunJobs _sut;
 
     public AgentRunJobsTests()
     {
+        var workspace = new TicketWorkspace(_git, _publisher, NullLogger<TicketWorkspace>.Instance);
         _sut = new AgentRunJobs(
             _backlog,
             _runs,
-            _proc,
-            new Agent(_codingAgent, _backlog, NullLogger<Agent>.Instance),
+            workspace,
+            new Agent(_codingAgent, _backlog, workspace, NullLogger<Agent>.Instance),
             NullLogger<AgentRunJobs>.Instance);
     }
 
@@ -60,7 +65,7 @@ public class AgentRunJobsTests
         Assert.Equal(AgentRunStatus.Cancelled, finished.Status);
         Assert.Null(finished.Outcome);
         Assert.NotNull(finished.Error);
-        Assert.Empty(_proc.RunInheritedCalls);
+        Assert.Empty(_git.Calls);
         Assert.Empty(_codingAgent.RunCalls);
     }
 
@@ -76,7 +81,7 @@ public class AgentRunJobsTests
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
         Assert.Equal("gh no disponible", finished.Error);
-        Assert.Empty(_proc.RunInheritedCalls);
+        Assert.Empty(_git.Calls);
     }
 
     [Fact]
@@ -85,14 +90,66 @@ public class AgentRunJobsTests
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Refined));
-        _proc.OnRunInherited = (_, _, _) => 1;
+        _git.PullFailure = ApplicationError.ExternalDependencyUnavailable("git pull --ff-only falló (exit 1).");
 
         _sut.Execute(run.Id);
 
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
-        Assert.Contains("1", finished.Error);
+        Assert.Equal("git pull --ff-only falló (exit 1).", finished.Error);
+        Assert.Equal(TicketState.Refined, _backlog.Get(IssueNumber)!.State);
+        Assert.DoesNotContain(_git.Calls, c => c.StartsWith("reset-branch"));
         Assert.Empty(_codingAgent.RunCalls);
+    }
+
+    [Fact]
+    public void Execute_FinishesAsFailed_WithoutRunningImplementer_WhenWorkingTreeIsDirty()
+    {
+        var run = CreateQueuedRun("implementer");
+        _runs.Add(run);
+        _backlog.Add(CreateItem(TicketState.Refined));
+        _git.Dirty = true;
+
+        _sut.Execute(run.Id);
+
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Contains("sin commitear", finished.Error);
+        Assert.Equal(TicketState.Refined, _backlog.Get(IssueNumber)!.State);
+        Assert.DoesNotContain("stash", _git.Calls);
+        Assert.Empty(_codingAgent.RunCalls);
+    }
+
+    [Fact]
+    public void Execute_RunsImplementerOnFreshTicketBranchCutFromUpdatedDefaultBranch()
+    {
+        var run = CreateQueuedRun("implementer");
+        _runs.Add(run);
+        _backlog.Add(CreateItem(TicketState.Refined));
+        string? branchDuringSession = null;
+        _codingAgent.OnRun = (_, _) =>
+        {
+            branchDuringSession = _git.CurrentBranch;
+            return new ImplementerResult { Status = "done", Summary = "todo listo" };
+        };
+
+        _sut.Execute(run.Id);
+
+        Assert.Equal(TicketBranch, branchDuringSession);
+        Assert.Equal(["default-branch", "status", "checkout main", "pull", $"reset-branch {TicketBranch} main"], _git.Calls.Take(5));
+    }
+
+    [Fact]
+    public void Execute_RunsRefinerOnDefaultBranchWithoutTicketBranch()
+    {
+        var run = CreateQueuedRun("refiner");
+        _runs.Add(run);
+        _backlog.Add(CreateItem(TicketState.Unrefined));
+        _codingAgent.OnRun = (_, _) => new RefinerResult { Outcome = "ready", Summary = "listo" };
+
+        _sut.Execute(run.Id);
+
+        Assert.Equal(["default-branch", "checkout main", "pull"], _git.Calls);
     }
 
     [Fact]
@@ -112,7 +169,7 @@ public class AgentRunJobsTests
     }
 
     [Fact]
-    public void Execute_ClosesIssueAndFinishesSucceeded_WhenImplementerReportsDone()
+    public void Execute_PublishesBranchAndMarksInReview_WhenImplementerReportsDone()
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
@@ -121,30 +178,102 @@ public class AgentRunJobsTests
 
         _sut.Execute(run.Id);
 
+        var proposal = Assert.Single(_publisher.Published);
+        Assert.Equal(new ChangeProposal(IssueNumber, TicketBranch, "main", "Title", "todo listo"), proposal);
         var item = _backlog.Get(IssueNumber)!;
-        Assert.Equal(TicketState.Done, item.State);
-        Assert.Single(item.Comments);
+        Assert.Equal(TicketState.InReview, item.State);
+        var comment = Assert.Single(item.Comments);
+        Assert.Contains("https://example.com/pull/42", comment);
+        Assert.Contains("todo listo", comment);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
         Assert.Equal("done", finished.Outcome);
         Assert.Null(finished.Error);
+        Assert.Equal("main", _git.CurrentBranch);
+        Assert.Contains(TicketBranch, _git.Branches);
     }
 
     [Fact]
-    public void Execute_FinishesFailed_WhenDoneButClosingIssueFails()
+    public void Execute_FinishesFailedWithoutPublishing_WhenDoneButBranchHasNoCommits()
+    {
+        var run = CreateQueuedRun("implementer");
+        _runs.Add(run);
+        _backlog.Add(CreateItem(TicketState.Refined));
+        _git.Ahead = 0;
+        _codingAgent.OnRun = (_, _) => new ImplementerResult { Status = "done", Summary = "todo listo" };
+
+        _sut.Execute(run.Id);
+
+        Assert.Empty(_publisher.Published);
+        var item = _backlog.Get(IssueNumber)!;
+        Assert.Equal(TicketState.Failed, item.State);
+        Assert.Contains("no tiene commits", Assert.Single(item.Comments));
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Contains("no tiene commits", finished.Error);
+        Assert.Equal("main", _git.CurrentBranch);
+    }
+
+    [Fact]
+    public void Execute_FinishesFailedAndStashesLeftovers_WhenDoneButSessionLeftUncommittedChanges()
+    {
+        var run = CreateQueuedRun("implementer");
+        _runs.Add(run);
+        _backlog.Add(CreateItem(TicketState.Refined));
+        _codingAgent.OnRun = (_, _) =>
+        {
+            _git.Dirty = true;
+            return new ImplementerResult { Status = "done", Summary = "todo listo" };
+        };
+
+        _sut.Execute(run.Id);
+
+        Assert.Empty(_publisher.Published);
+        Assert.Equal(TicketState.Failed, _backlog.Get(IssueNumber)!.State);
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Contains("sin commitear", finished.Error);
+        Assert.Contains("stash", _git.Calls);
+        Assert.False(_git.Dirty);
+        Assert.Equal("main", _git.CurrentBranch);
+    }
+
+    [Fact]
+    public void Execute_FinishesFailed_WhenDoneButPublishingFails()
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
         _backlog.Add(CreateItem(TicketState.Refined));
         _codingAgent.OnRun = (_, _) => new ImplementerResult { Status = "done", Summary = "todo listo" };
-        _backlog.CloseFailure = ApplicationError.ExternalDependencyUnavailable("gh close falló");
+        _publisher.PublishFailure = ApplicationError.ExternalDependencyUnavailable("gh pr create falló");
+
+        _sut.Execute(run.Id);
+
+        var item = _backlog.Get(IssueNumber)!;
+        Assert.Equal(TicketState.Failed, item.State);
+        Assert.Contains("gh pr create falló", Assert.Single(item.Comments));
+        var finished = _runs.Get(run.Id)!;
+        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Equal("gh pr create falló", finished.Error);
+        Assert.Contains(TicketBranch, _git.Branches);
+    }
+
+    [Fact]
+    public void Execute_FinishesFailed_WhenDoneButMarkingInReviewFails()
+    {
+        var run = CreateQueuedRun("implementer");
+        _runs.Add(run);
+        _backlog.Add(CreateItem(TicketState.Refined));
+        _codingAgent.OnRun = (_, _) => new ImplementerResult { Status = "done", Summary = "todo listo" };
+        _backlog.MarkInReviewFailure = ApplicationError.ExternalDependencyUnavailable("gh label falló");
 
         _sut.Execute(run.Id);
 
         Assert.Equal(TicketState.Refined, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
         Assert.Equal(AgentRunStatus.Failed, finished.Status);
-        Assert.Equal("gh close falló", finished.Error);
+        Assert.Equal("gh label falló", finished.Error);
+        Assert.Equal("main", _git.CurrentBranch);
     }
 
     [Fact]
@@ -162,6 +291,9 @@ public class AgentRunJobsTests
         Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
         Assert.Equal("blocked", finished.Outcome);
         Assert.Null(finished.Error);
+        Assert.Empty(_publisher.Published);
+        Assert.Equal("main", _git.CurrentBranch);
+        Assert.DoesNotContain(TicketBranch, _git.Branches);
     }
 
     [Fact]

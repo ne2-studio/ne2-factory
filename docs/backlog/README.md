@@ -9,10 +9,25 @@ on.
   labeled `refined` unattended through `claude --agent implementer`, fed the `work-ticket`
   prompt (a versioned resource in this project, not a Claude Code skill — see
   `PromptTemplates` in `src/Ne2Factory.Cli`): the session opens as the Implementer Agent
-  and coordinates the ticket end to end — delegate implementation, verify, commit, push —
-  then reports what happened in its final JSON message. The factory itself, not the
-  session, posts that as a comment on the issue and closes it (or marks it failed).
-  Unrefined tickets get the same treatment via `claude --agent refiner`. See
+  and coordinates the ticket end to end — delegate implementation, verify, commit —
+  then reports what happened in its final JSON message. Git is the factory's job, not the
+  session's: before the session it cuts a fresh `factory/issue-<n>` branch from origin's
+  default branch (`origin/HEAD`, so it must be set: `git remote set-head origin --auto`),
+  and the session only commits there. On `done` the factory pushes that branch, opens a
+  pull request against the default branch (reusing the open one on a re-run) with
+  `Closes #<n>` in its body — a re-run force-pushes over the factory's own previous push,
+  but if the remote branch has commits it didn't push (e.g. the reviewer's), it refuses
+  and marks the issue failed instead of overwriting them — comments the PR link and summary on the issue and labels it
+  `in-review` — out of the queue, and closed by GitHub once the reviewer merges the PR. On
+  `blocked` it comments and marks the issue failed, and the branch is discarded. Either way
+  the working tree is left back on the default branch (anything left uncommitted is
+  stashed, not lost); it must be clean before a ticket starts. With the `File` backlog
+  there is nowhere to open a PR: the branch stays local, unpushed, for the reviewer.
+  Unrefined tickets get the same treatment via `claude --agent refiner`, minus the
+  branch: the refiner only reads the up-to-date default branch. PRs from different tickets
+  are independent, so two of them touching the same code may conflict when merged; resolve
+  it then, or requeue the later ticket so its branch is cut again from the updated default
+  branch. See
   `ne2-factory run --help`. Tickets are queued by filing a GitHub issue with the `backlog`
   label directly — this tool no longer queues tickets itself.
 * `ne2-factory backlog` — inspect/manage the queue (`list`, `refine`, `requeue`). See
