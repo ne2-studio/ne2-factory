@@ -1,13 +1,21 @@
+using Hangfire;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Ne2Factory.Cli.Backlog;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
 // Hosted alongside Hangfire's own BackgroundJobServer (see AddHangfireServer in
 // Program.cs) only when `ne2-factory run` calls host.RunAsync(); other commands
 // never start the host, so this never executes for them.
+//
+// Only discovers eligible issues and enqueues one AgentRunJobs run per issue;
+// the actual work (git pull + agent.Run + done/blocked) happens there,
+// on Hangfire's background job server.
 internal sealed class FactoryWorker(
-    BacklogQueueProcessor queueProcessor,
+    IBacklog backlog,
+    IAgentRunRepository runs,
+    IBackgroundJobClient backgroundJobs,
     ProjectContext ctx,
     ILogger<FactoryWorker> logger) : BackgroundService
 {
@@ -22,7 +30,7 @@ internal sealed class FactoryWorker(
             {
                 try
                 {
-                    queueProcessor.ProcessQueue();
+                    ProcessQueue();
                 }
                 catch (Exception ex)
                 {
@@ -39,5 +47,52 @@ internal sealed class FactoryWorker(
         {
             // Ctrl-C / host shutdown requested — nothing more to do.
         }
+    }
+
+    private void ProcessQueue()
+    {
+        var pending = backlog.ListPending();
+        if (pending.IsFailure)
+        {
+            logger.LogError("No se pudo listar tickets pendientes: {Error}", pending.Error.Message);
+            return;
+        }
+
+        var items = pending.Value.OrderBy(i => i.Number).ToArray();
+
+        if (items.Length == 0)
+        {
+            logger.LogInformation("No hay issues por procesar.");
+            return;
+        }
+
+        logger.LogInformation("Vistos {Count} tickets en cola: {Numbers}", items.Length, string.Join(", ", items.Select(i => $"#{i.Number}")));
+
+        foreach (var item in items)
+            TryEnqueue(item);
+    }
+
+    private void TryEnqueue(BacklogItem item)
+    {
+        var issueNumber = item.Number;
+        var agentName = TicketAgents.ForState(item.State);
+
+        if (agentName is null)
+        {
+            logger.LogDebug("Issue #{Number} está en estado {State}, ya no elegible; la salto.", issueNumber, item.State);
+            return;
+        }
+
+        // TryCreateQueued locks per issue number regardless of agent name, so an issue
+        // can never have a work-ticket and a refine-ticket run active at once.
+        var run = runs.TryCreateQueued(issueNumber, agentName);
+        if (run is null)
+        {
+            logger.LogDebug("Issue #{Number} ya tiene un run activo (queued/running); lo salto.", issueNumber);
+            return;
+        }
+
+        var jobId = backgroundJobs.Enqueue<AgentRunJobs>(job => job.Execute(run.Id));
+        logger.LogInformation("Encolado: {JobId} (issue #{Number}, agente {AgentName}, run {RunId}).", jobId, issueNumber, agentName, run.Id);
     }
 }

@@ -8,7 +8,7 @@ using Ne2Factory.Cli.Services;
 namespace Ne2Factory.Cli.FactoryWorker;
 
 // Hangfire job body for a single AgentRun — the equivalent of what used to
-// run inline in BacklogQueueProcessor's foreach before that loop moved to
+// run inline in the worker's foreach before that loop moved to
 // background. Executes inside the Hangfire server hosted by `ne2-factory run`.
 // No automatic retries: an ambiguous outcome needs a human look, not a
 // silent re-run against the same ticket.

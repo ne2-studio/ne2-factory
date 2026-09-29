@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Ne2Factory.Cli.Agents;
 
-// Abstracts spawning a headless Claude session so callers (BacklogQueueProcessor,
+// Abstracts spawning a headless Claude session so callers (FactoryWorker,
 // GapScoutJobs, ...) don't build `claude` CLI args by hand.
 public interface IAgent
 {

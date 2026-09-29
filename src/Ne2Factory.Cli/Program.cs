@@ -80,7 +80,6 @@ builder.Services.AddSingleton<IBacklog>(sp =>
 builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
 builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<RunsCommand>();
-builder.Services.AddSingleton<BacklogQueueProcessor>();
 builder.Services.AddSingleton<GapScoutCommand>();
 builder.Services.AddHostedService<FactoryWorker>();
 
