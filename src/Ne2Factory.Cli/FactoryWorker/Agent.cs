@@ -1,30 +1,31 @@
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Agents;
 using Ne2Factory.Cli.Backlog;
+using Ne2Factory.Cli.Common;
 
 namespace Ne2Factory.Cli.FactoryWorker;
 
 public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> logger)
 {
-    public AgentRunJobs.RunOutcome GenerateAndProcessResponse(string agentName, BacklogItem current)
+    public Result<string> GenerateAndProcessResponse(string agentName, BacklogItem current)
     {
         var prompt = agentName == TicketAgents.Refine
             ? PromptTemplates.RefineTicket(current)
             : PromptTemplates.WorkTicket(current);
 
-        object? response = agentName == TicketAgents.Refine
+        object? result = agentName == TicketAgents.Refine
             ? codingAgent.RunWithStructuredOutput<RefinerResult>(prompt, new CodingAgentOptions { SkipPermissions = true, Agent = TicketAgents.Refine }).Result
             : codingAgent.RunWithStructuredOutput<ImplementerResult>(prompt, new CodingAgentOptions { SkipPermissions = true, Agent = TicketAgents.Work }).Result;
 
-        if (response is null)
+        if (result is null)
         {
-            return AgentRunJobs.RunOutcome.Failed(outcome: null, error: "Sesión sin resultado interpretable");
+            return Result.Failure<string>(ApplicationError.ExternalDependencyUnavailable("Sesión sin resultado interpretable"));
         }
         else
         {
             var outcome = agentName == TicketAgents.Refine
-                ? PostRefine(current, (RefinerResult)response)
-                : PostWork(current, (ImplementerResult)response);
+                ? PostRefine(current, (RefinerResult)result)
+                : PostWork(current, (ImplementerResult)result);
 
             return outcome;
         }
@@ -32,33 +33,33 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
 
     /// IMPLEMENTER
     ///
-    private AgentRunJobs.RunOutcome PostWork(BacklogItem current, ImplementerResult response)
+    private Result<string> PostWork(BacklogItem current, ImplementerResult result)
     {
         int number = current.Number;
         
-        switch (response.Status)
+        switch (result.Status)
         {
             case "done":
             {
-                backlog.Comment(number, FormatWorkTicketComment(response));
+                backlog.Comment(number, FormatWorkTicketComment(result));
                 backlog.Close(number);
 
                 logger.LogInformation("-> hecho: #{Number}", number);
-                return AgentRunJobs.RunOutcome.Succeeded(response.Status);
+                return result.Status;
             }
             case "blocked":
             {
-                backlog.Comment(number, FormatWorkTicketComment(response));
+                backlog.Comment(number, FormatWorkTicketComment(result));
                 backlog.MarkFailed(number);
 
-                logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(response.Reason) ? "" : $" ({response.Reason})", number);
-                return AgentRunJobs.RunOutcome.Failed(response.Status, response.Reason);
+                logger.LogInformation("-> bloqueado: #{Number}{Reason}. Revisa y usa 'requeue {Number}' si procede.", number, string.IsNullOrEmpty(result.Reason) ? "" : $" ({result.Reason})", number);
+                return result.Status;
             }
             default:
-                logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", response.Status, number);
+                logger.LogWarning("-> resultado desconocido ('{Status}'), marco #{Number} como fallido para revisión manual.", result.Status, number);
                 backlog.MarkFailed(number);
 
-                return AgentRunJobs.RunOutcome.Failed(response.Status, error: $"Resultado desconocido: {response.Status}");
+                return Result.Failure<string>(ApplicationError.ExternalDependencyUnavailable($"Resultado desconocido: {result.Status}"));
         }
     }
     
@@ -70,12 +71,12 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
     
     /// REFINER
     ///
-    private AgentRunJobs.RunOutcome PostRefine(BacklogItem current, RefinerResult response)
+    private Result<string> PostRefine(BacklogItem current, RefinerResult result)
     {
         var number = current.Number;
-        var ready = response.Outcome == "ready";
+        var ready = result.Outcome == "ready";
         
-        backlog.Comment(number, FormatRefinementComment(response));
+        backlog.Comment(number, FormatRefinementComment(result));
         if (ready)
         {
             backlog.MarkRefined(number);
@@ -86,7 +87,7 @@ public class Agent(ICodingAgent codingAgent, IBacklog backlog, ILogger<Agent> lo
         }
         
         logger.LogInformation(ready ? "-> refinado: #{Number}" : "-> #{Number} sigue sin datos suficientes; queda a la espera de más información.", number);
-        return AgentRunJobs.RunOutcome.Succeeded(response.Outcome);
+        return result.Outcome;
     }
 
     private static string FormatRefinementComment(RefinerResult result)

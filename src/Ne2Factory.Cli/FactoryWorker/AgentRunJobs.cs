@@ -1,7 +1,6 @@
 using Hangfire;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli.Backlog;
-using Ne2Factory.Cli.Common;
 using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.FactoryWorker;
@@ -64,31 +63,25 @@ public sealed class AgentRunJobs(
             logger.LogInformation("Lanzando @{Agent} en la issue #{Number} ({Url}).", run.AgentName, number,
                 current.Url);
 
-            var outcome = agent.GenerateAndProcessResponse(run.AgentName, current);
+            var result = agent.GenerateAndProcessResponse(run.AgentName, current);
 
-            if (outcome.Outcome is null)
+            if (result.IsFailure)
             {
                 logger.LogWarning(
                     "-> la sesión terminó sin un resultado interpretable (salida manual/crash/formato inesperado). Marco #{Number} como fallido para revisión manual.",
                     number);
 
                 backlog.MarkFailed(number);
+                runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: result.Error.Message);
+                return;
             }
 
-            runs.Finish(runId, outcome.Status, outcome: outcome.Outcome, error: outcome.Error);
+            runs.Finish(runId, AgentRunStatus.Succeeded, outcome: result.Value, error: null);
         }
         catch (BacklogException ex)
         {
             logger.LogError("-> no se pudo consultar #{Number} en el backlog: {Error}. Marco el run como fallido para reintentar en el próximo ciclo.", run.IssueNumber, ex.Message);
             runs.Finish(runId, AgentRunStatus.Failed, outcome: null, error: ex.Message);
         }
-    }
-
-    // What ExecuteWork/ExecuteRefine settled on, so Execute is the single place
-    // that calls runs.Finish (it's the one that owns runId).
-    public readonly record struct RunOutcome(AgentRunStatus Status, string? Outcome, string? Error)
-    {
-        public static RunOutcome Failed(string? outcome, string? error) => new(AgentRunStatus.Failed, outcome, error);
-        public static RunOutcome Succeeded(string? outcome) => new(AgentRunStatus.Succeeded, outcome, Error: null);
     }
 }

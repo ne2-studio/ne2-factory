@@ -148,7 +148,7 @@ public class AgentRunJobsTests
     }
 
     [Fact]
-    public void Execute_MarksBacklogFailedAndFinishesFailed_WhenImplementerReportsBlocked()
+    public void Execute_MarksBacklogFailedButFinishesSuccessfully_WhenImplementerReportsBlocked()
     {
         var run = CreateQueuedRun("implementer");
         _runs.Add(run);
@@ -159,9 +159,9 @@ public class AgentRunJobsTests
 
         Assert.Equal(TicketState.Failed, _backlog.Get(IssueNumber)!.State);
         var finished = _runs.Get(run.Id)!;
-        Assert.Equal(AgentRunStatus.Failed, finished.Status);
+        Assert.Equal(AgentRunStatus.Succeeded, finished.Status);
         Assert.Equal("blocked", finished.Outcome);
-        Assert.Equal("falta acceso", finished.Error);
+        Assert.Null(finished.Error);
     }
 
     [Fact]
