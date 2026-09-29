@@ -38,7 +38,8 @@ doc paths) goes in `.ne2-factory/project.md`. Values only a shell script reads g
 
 ### `verify`
 
-- **Purpose.** Owns what counts as evidence a diff is correct.
+- **Purpose.** Knows the project's checks and which risks each one covers, so the
+  caller can gather evidence that a diff is correct.
 - **In.** A diff + one or two sentences of intent.
 - **Out.** The diff's risks, and per risk the narrowest check: which suite/command,
   whether a test must be added, when to escalate to real infra.
