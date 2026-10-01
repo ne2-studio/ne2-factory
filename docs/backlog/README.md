@@ -43,6 +43,18 @@ on.
   until a human adds the missing information and requeues it. Without `--all` this stops
   after the first ticket; Ctrl-C is always safe — whatever wasn't processed yet stays
   queued for next time.
+* Pull request verification — while `ne2-factory run` is up, it also polls the open pull
+  requests the factory opened (head branch `factory/issue-<n>`, not draft). Each head
+  commit not verified yet gets a headless `claude --agent verifier` session, fed the
+  `verify-pull-request` prompt: the ticket as the intent, the pull request description as
+  hints only (the implementer wrote it), and the head checked out detached on the shared
+  working tree. The factory then posts the verdict (`PASS` / `FAIL` / `INCONCLUSIVE`, or
+  `NO VERDICT` if the session gave nothing interpretable) as a comment on the pull request,
+  with a hidden marker naming the verified commit — that marker is how it knows not to
+  verify the same head twice, so new commits get a new verification. The verdict is for
+  audit only: no labels, no reviews, nothing else is decided from it. The verifier is
+  read-only; if it leaves uncommitted changes anyway, they're stashed and the comment says
+  so. Skipped with the `File` backlog, which opens no pull requests.
 * `ne2-factory gap-scout` — runs the `find-architecture-gaps` skill periodically over a
   configured scope (`GAP_SCOUT_SCOPES` in `.ne2-factory.env`) via the
   `architecture-gap-scout` agent, dedupes against previously filed initiatives, and files

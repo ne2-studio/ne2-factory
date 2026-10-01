@@ -32,6 +32,18 @@ internal sealed record IssueDetail(
 
 internal sealed record PullRequestSummary([property: JsonPropertyName("url")] string Url);
 
+internal sealed record PullRequestDetail(
+    [property: JsonPropertyName("number")] int Number,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("body")] string? Body,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("state")] string State,
+    [property: JsonPropertyName("isDraft")] bool IsDraft,
+    [property: JsonPropertyName("headRefName")] string HeadRefName,
+    [property: JsonPropertyName("headRefOid")] string HeadRefOid,
+    [property: JsonPropertyName("baseRefName")] string BaseRefName,
+    [property: JsonPropertyName("comments")] IssueComment[]? Comments);
+
 internal interface IGitHub
 {
     void CreateLabelSilently(string name, string color, string description);
@@ -44,6 +56,9 @@ internal interface IGitHub
     IssueDetail? ViewIssue(int number, string fields);
     Result<string?> FindOpenPullRequest(string head);
     Result<string> CreatePullRequest(string head, string baseBranch, string title, string body);
+    Result<PullRequestDetail[]> ListOpenPullRequests();
+    Result<PullRequestDetail> ViewPullRequest(int number);
+    Result CommentOnPullRequest(int number, string body);
 }
 
 // Wraps `gh` invocations. Every issue query goes through `--json` and is parsed
@@ -166,5 +181,42 @@ internal sealed class GitHub(IProcessRunner proc, ILogger<GitHub> logger) : IGit
             return Result.Failure<string>(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
         }
         return Result.Success(stdout.Trim());
+    }
+
+    private const string PullRequestFields = "number,title,body,url,state,isDraft,headRefName,headRefOid,baseRefName,comments";
+
+    public Result<PullRequestDetail[]> ListOpenPullRequests()
+    {
+        var (stdout, stderr, exit) = proc.Capture("gh", ["pr", "list", "--state", "open", "--limit", "100", "--json", PullRequestFields]);
+        if (exit != 0)
+        {
+            logger.LogError("{Stderr}", stderr);
+            return Result.Failure<PullRequestDetail[]>(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
+        }
+        return Result.Success(JsonSerializer.Deserialize<PullRequestDetail[]>(stdout, JsonOptions) ?? []);
+    }
+
+    public Result<PullRequestDetail> ViewPullRequest(int number)
+    {
+        var (stdout, stderr, exit) = proc.Capture("gh", ["pr", "view", number.ToString(), "--json", PullRequestFields]);
+        if (exit != 0)
+        {
+            logger.LogError("{Stderr}", stderr);
+            return Result.Failure<PullRequestDetail>(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
+        }
+        return JsonSerializer.Deserialize<PullRequestDetail>(stdout, JsonOptions) is { } pr
+            ? Result.Success(pr)
+            : Result.Failure<PullRequestDetail>(ApplicationError.ExternalDependencyUnavailable($"gh pr view {number} no devolvió un PR."));
+    }
+
+    public Result CommentOnPullRequest(int number, string body)
+    {
+        var (_, stderr, exit) = proc.Capture("gh", ["pr", "comment", number.ToString(), "--body", body]);
+        if (exit != 0)
+        {
+            logger.LogError("{Stderr}", stderr);
+            return Result.Failure(ApplicationError.ExternalDependencyUnavailable(stderr.Trim()));
+        }
+        return Result.Success();
     }
 }

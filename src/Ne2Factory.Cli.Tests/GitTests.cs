@@ -105,4 +105,35 @@ public class GitTests
         Assert.Contains("no publicó la factory", result.Error.Message);
         Assert.DoesNotContain(_proc.CaptureCalls, c => c.Args[2] == "push");
     }
+
+    [Fact]
+    public void Fetch_UpdatesRemoteTrackingRef_AndReturnsItsCommit()
+    {
+        _proc.OnCapture = (_, args, _) => args[2] == "rev-parse" ? ("abc123\n", "", 0) : ("", "", 0);
+
+        var result = _git.Fetch("factory/issue-42");
+
+        Assert.Equal("abc123", result.Value);
+        Assert.Equal(["-C", Root, "fetch", "origin", "+refs/heads/factory/issue-42:refs/remotes/origin/factory/issue-42"], _proc.CaptureCalls[0].Args);
+        Assert.Equal(["-C", Root, "rev-parse", "--verify", "refs/remotes/origin/factory/issue-42"], _proc.CaptureCalls[1].Args);
+    }
+
+    [Fact]
+    public void Fetch_Fails_WithoutResolving_WhenFetchFails()
+    {
+        _proc.OnCapture = (_, _, _) => ("", "couldn't find remote ref", 128);
+
+        var result = _git.Fetch("factory/issue-42");
+
+        Assert.True(result.IsFailure);
+        Assert.Single(_proc.CaptureCalls);
+    }
+
+    [Fact]
+    public void CheckoutDetached_ChecksOutCommitWithoutABranch()
+    {
+        _git.CheckoutDetached("abc123");
+
+        Assert.Equal(["-C", Root, "checkout", "--detach", "abc123"], _proc.CaptureCalls.Single().Args);
+    }
 }

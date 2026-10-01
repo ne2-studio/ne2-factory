@@ -68,3 +68,12 @@ public sealed record RefinerResult
     [JsonPropertyName("questions")]
     public IReadOnlyList<string>? Questions { get; init; }
 }
+
+public sealed record VerifierResult
+{
+    [JsonPropertyName("status")]
+    public required string Status { get; init; }
+
+    [JsonPropertyName("report")]
+    public string? Report { get; init; }
+}

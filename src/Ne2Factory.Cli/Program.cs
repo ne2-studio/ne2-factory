@@ -16,6 +16,7 @@ using Ne2Factory.Cli.FactoryWorker.Commands;
 using Ne2Factory.Cli.FactoryWorker.Publishing;
 using Ne2Factory.Cli.GapScout;
 using Ne2Factory.Cli.Services;
+using Ne2Factory.Cli.Verification;
 using Serilog;
 
 const string TopUsage = """
@@ -53,6 +54,11 @@ const string RunUsage = """
     The worker stops (exits) if a ticket ends without a clear done/blocked
     signal — that needs a human look before resuming; requeue/fix the issue
     and run `ne2-factory run` again.
+
+    Each open pull request the factory opened (not draft) is also verified by
+    the `verifier` agent, once per new head commit, and its verdict posted as
+    a comment on the pull request — for audit only, nothing else is decided
+    from it. Skipped with the File backlog, which opens no pull requests.
 
     Use `ne2-factory backlog` to inspect/manage the queue interactively.
     Requires `gh` authenticated against this repo when using the GitHub
@@ -102,14 +108,18 @@ builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
 builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<RunsCommand>();
 builder.Services.AddSingleton<GapScoutCommand>();
+builder.Services.AddSingleton<IPullRequests, GitHubPullRequests>();
+builder.Services.AddSingleton<VerificationWorkspace>();
 builder.Services.AddHostedService<FactoryWorker>();
+builder.Services.AddHostedService<PullRequestVerificationWorker>();
 builder.Services.AddScoped<Agent>();
 
 var dataDir = ProjectContext.DataDirFor(rootDir);
 Directory.CreateDirectory(dataDir);
 builder.Services.AddHangfire(config => config.UseSQLiteStorage(Path.Combine(dataDir, "database.db")));
-// WorkerCount = 1: AgentRunJobs checks out the ticket branch and runs the agent
-// against the same working directory, so jobs must run sequentially, not in parallel.
+// WorkerCount = 1: AgentRunJobs and PullRequestVerificationJobs check out a branch
+// and run the agent against the same working directory, so jobs must run
+// sequentially, not in parallel.
 builder.Services.AddHangfireServer(options => options.WorkerCount = 1);
 
 using var host = builder.Build();

@@ -11,7 +11,16 @@ namespace Ne2Factory.Cli.FactoryWorker;
 // base branch for the next run (jobs share one working tree, see Program.cs).
 public class TicketWorkspace(IGit git, IChangePublisher publisher, ILogger<TicketWorkspace> logger)
 {
-    public static string BranchFor(int issueNumber) => $"factory/issue-{issueNumber}";
+    private const string BranchPrefix = "factory/issue-";
+
+    public static string BranchFor(int issueNumber) => $"{BranchPrefix}{issueNumber}";
+
+    // The issue a factory ticket branch belongs to, or null for any other branch.
+    public static int? IssueNumberFrom(string branch) =>
+        branch.StartsWith(BranchPrefix, StringComparison.Ordinal)
+        && int.TryParse(branch[BranchPrefix.Length..], out var number)
+            ? number
+            : null;
 
     // Brings the base branch up to date and, when `onTicketBranch`, checks out
     // the ticket branch fresh from it. Returns the base branch.

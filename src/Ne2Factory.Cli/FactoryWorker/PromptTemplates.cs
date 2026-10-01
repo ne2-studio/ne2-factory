@@ -8,7 +8,7 @@ internal static class PromptTemplates
 
     public static string RefineTicket(BacklogItem item) => Fill(Load("refine-ticket"), item);
 
-    private static string Load(string name)
+    internal static string Load(string name)
     {
         var resourceName = $"{name}.md";
         using var stream = typeof(PromptTemplates).Assembly.GetManifestResourceStream(resourceName)

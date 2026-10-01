@@ -20,6 +20,10 @@ public interface IGit
     // Pushes `branch` over whatever the factory itself last pushed there, but
     // refuses if the remote branch has anything else (e.g. a reviewer's commits).
     Result Push(string branch);
+    // Updates the remote-tracking ref for `branch` and returns the commit it points at.
+    Result<string> Fetch(string branch);
+    // Checks out `commit` without moving any local branch.
+    Result CheckoutDetached(string commit);
 }
 
 // Runs every command with `-C <root>` rather than relying on the process's cwd.
@@ -90,6 +94,13 @@ internal sealed class Git(IProcessRunner proc, RootDirectory root) : IGit
         var pushed = Run("push", $"--force-with-lease={branch}:{remoteSha}", "-u", Remote, branch);
         return pushed.IsSuccess ? Run("update-ref", publishedRef, branch) : pushed;
     }
+
+    public Result<string> Fetch(string branch) =>
+        Run("fetch", Remote, $"+refs/heads/{branch}:refs/remotes/{Remote}/{branch}")
+            .Bind(() => Capture("rev-parse", "--verify", $"refs/remotes/{Remote}/{branch}"))
+            .Map(stdout => stdout.Trim());
+
+    public Result CheckoutDetached(string commit) => Run("checkout", "--detach", commit);
 
     private Result Run(params string[] args)
     {

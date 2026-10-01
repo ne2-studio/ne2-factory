@@ -15,6 +15,10 @@ internal sealed class FakeGit : IGit
 
     public ApplicationError? DefaultBranchFailure { get; set; }
     public ApplicationError? PullFailure { get; set; }
+    public ApplicationError? FetchFailure { get; set; }
+
+    // Commit each remote branch points at, as Fetch reports it.
+    public Dictionary<string, string> RemoteBranches { get; } = [];
 
     public Result<string> DefaultBranch()
     {
@@ -72,6 +76,19 @@ internal sealed class FakeGit : IGit
     public Result Push(string branch)
     {
         Calls.Add($"push {branch}");
+        return Result.Success();
+    }
+
+    public Result<string> Fetch(string branch)
+    {
+        Calls.Add($"fetch {branch}");
+        return FetchFailure is { } error ? Result.Failure<string>(error) : Result.Success(RemoteBranches[branch]);
+    }
+
+    public Result CheckoutDetached(string commit)
+    {
+        Calls.Add($"checkout --detach {commit}");
+        CurrentBranch = commit;
         return Result.Success();
     }
 }

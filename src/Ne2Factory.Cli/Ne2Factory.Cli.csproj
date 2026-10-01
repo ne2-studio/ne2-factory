@@ -18,13 +18,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- work-ticket/refine-ticket prompts, versioned with the code that fills them in
+    <!-- work-ticket/refine-ticket/verify-pull-request prompts, versioned with the code that fills them in
          (see PromptTemplates) rather than exposed as Claude Code skills. -->
     <EmbeddedResource Include="FactoryWorker/Prompts/work-ticket.md">
       <LogicalName>work-ticket.md</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="FactoryWorker/Prompts/refine-ticket.md">
       <LogicalName>refine-ticket.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Verification/Prompts/verify-pull-request.md">
+      <LogicalName>verify-pull-request.md</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 
