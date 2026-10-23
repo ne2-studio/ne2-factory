@@ -8,10 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ASP.NET Core for the control panel (`ne2-factory ui`). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.25" />
     <PackageReference Include="Hangfire.NetCore" Version="1.8.25" />
     <PackageReference Include="Hangfire.Storage.SQLite" Version="0.4.3" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
@@ -29,6 +33,11 @@
     <EmbeddedResource Include="Verification/Prompts/verify-pull-request.md">
       <LogicalName>verify-pull-request.md</LogicalName>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The control panel's static page: plain files, no build step, served from next to the binary. -->
+    <None Include="ControlPanel/wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

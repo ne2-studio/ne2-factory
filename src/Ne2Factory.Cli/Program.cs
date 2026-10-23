@@ -1,30 +1,20 @@
-using Hangfire;
-using Hangfire.Storage.SQLite;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Ne2Factory.Cli;
-using Ne2Factory.Cli.Agents;
-using Ne2Factory.Cli.Backlog;
 using Ne2Factory.Cli.Backlog.Commands;
-using Ne2Factory.Cli.Backlog.File;
-using Ne2Factory.Cli.Backlog.GitHub;
-using Ne2Factory.Cli.Configuration;
-using Ne2Factory.Cli.FactoryWorker;
+using Ne2Factory.Cli.ControlPanel;
 using Ne2Factory.Cli.FactoryWorker.Commands;
-using Ne2Factory.Cli.FactoryWorker.Publishing;
 using Ne2Factory.Cli.GapScout;
-using Ne2Factory.Cli.Services;
-using Ne2Factory.Cli.Verification;
-using Serilog;
 
 const string TopUsage = """
-    Usage: ne2-factory <run|backlog|runs|gap-scout> ...
+    Usage: ne2-factory <run|ui|backlog|runs|gap-scout> ...
 
     Subcommands:
       run         Start the worker in the foreground: polls the backlog queue and
                     hosts the background job server. See `ne2-factory run --help`.
+      ui          Serve the web control panel: everything below, plus starting and
+                    stopping the worker. See `ne2-factory ui --help`.
       backlog     Interactively inspect/manage the ticket backlog. See
                     `ne2-factory backlog --help`.
       runs        List recent AgentRuns for observability. See
@@ -68,59 +58,14 @@ const string RunUsage = """
 var rootDir = RootDirectoryResolver.Resolve();
 Directory.SetCurrentDirectory(rootDir);
 
+if (args is ["ui", .. var uiArgs])
+    return await ControlPanelCommand.RunAsync(rootDir, uiArgs);
+
 var builder = Host.CreateApplicationBuilder(args);
-builder.Configuration.AddEnvFile(Path.Combine(rootDir, ".ne2-factory.env"));
-builder.Configuration.AddJsonFile(Path.Combine(rootDir, "appsettings.Local.json"), optional: true, reloadOnChange: false);
-
-builder.Services.AddSerilog((sp, loggerConfig) => loggerConfig
-    .MinimumLevel.Information()
-    // Hangfire logs at Info are noisy and drown out the worker's own logs.
-    // Bump to Warning by default; lower this back to Information/Debug locally
-    // when Hangfire internals need debugging.
-    .MinimumLevel.Override("Hangfire", Serilog.Events.LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .WriteTo.Console());
-
-builder.Services.AddSingleton(new RootDirectory(rootDir));
-builder.Services.AddSingleton<ProjectContext>();
-builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
-builder.Services.AddSingleton<ICodingAgent, ClaudeCodingAgent>();
-builder.Services.AddSingleton<IGitHub, GitHub>();
-builder.Services.AddSingleton<IGit, Git>();
-builder.Services.AddSingleton<IBacklog>(sp =>
-{
-    var ctx = sp.GetRequiredService<ProjectContext>();
-    return ctx.BacklogProvider.Equals("File", StringComparison.OrdinalIgnoreCase)
-        ? new FileBacklog(ctx)
-        : new GithubIssuesBacklog(sp.GetRequiredService<IGitHub>());
-});
-// Follows the backlog provider: GitHub issues get a GitHub pull request, the
-// File backlog has nowhere to open one and keeps the branch local.
-builder.Services.AddSingleton<IChangePublisher>(sp =>
-{
-    var ctx = sp.GetRequiredService<ProjectContext>();
-    return ctx.BacklogProvider.Equals("File", StringComparison.OrdinalIgnoreCase)
-        ? new LocalBranchPublisher()
-        : new GitHubPullRequestPublisher(sp.GetRequiredService<IGit>(), sp.GetRequiredService<IGitHub>());
-});
-builder.Services.AddSingleton<TicketWorkspace>();
-builder.Services.AddSingleton<IAgentRunRepository, SqliteAgentRunRepository>();
+builder.AddFactory(rootDir);
 builder.Services.AddSingleton<BacklogCommand>();
 builder.Services.AddSingleton<RunsCommand>();
 builder.Services.AddSingleton<GapScoutCommand>();
-builder.Services.AddSingleton<IPullRequests, GitHubPullRequests>();
-builder.Services.AddSingleton<VerificationWorkspace>();
-builder.Services.AddHostedService<FactoryWorker>();
-builder.Services.AddHostedService<PullRequestVerificationWorker>();
-builder.Services.AddScoped<Agent>();
-
-var dataDir = ProjectContext.DataDirFor(rootDir);
-Directory.CreateDirectory(dataDir);
-builder.Services.AddHangfire(config => config.UseSQLiteStorage(Path.Combine(dataDir, "database.db")));
-// WorkerCount = 1: AgentRunJobs and PullRequestVerificationJobs check out a branch
-// and run the agent against the same working directory, so jobs must run
-// sequentially, not in parallel.
-builder.Services.AddHangfireServer(options => options.WorkerCount = 1);
 
 using var host = builder.Build();
 using var scope = host.Services.CreateScope();
@@ -143,7 +88,7 @@ switch (args[0])
             logger.LogInformation("{Text}", RunUsage);
             return 0;
         }
-        services.GetRequiredService<IBacklog>().EnsureLabels();
+        services.GetRequiredService<WorkerSupervisor>().Start();
         await host.RunAsync();
         return Environment.ExitCode;
     case "backlog":

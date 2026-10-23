@@ -16,42 +16,37 @@ internal sealed class InMemoryBacklog : IBacklog
     public ApplicationError? MarkRefinedFailure { get; set; }
     public ApplicationError? MarkMissingDataFailure { get; set; }
     public ApplicationError? MarkInReviewFailure { get; set; }
+    public ApplicationError? ListFailedFailure { get; set; }
+    public ApplicationError? RequeueFailure { get; set; }
 
     public void Add(BacklogItem item) => items[item.Number] = item;
 
     public BacklogItem? Get(int number) => items.GetValueOrDefault(number);
 
-    public void EnsureLabels() =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(EnsureLabels)}.");
+    public void EnsureLabels() { }
 
     public IReadOnlyList<BacklogItem> ListPending() =>
         items.Values
             .Where(i => i.State is TicketState.Unrefined or TicketState.Refined)
             .ToArray();
 
-    public IReadOnlyList<BacklogItem> ListUnrefined() =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListUnrefined)}.");
+    public IReadOnlyList<BacklogItem> ListUnrefined() => ListByState(TicketState.Unrefined);
 
-    public IReadOnlyList<BacklogItem> ListRefined() =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListRefined)}.");
+    public IReadOnlyList<BacklogItem> ListRefined() => ListByState(TicketState.Refined);
 
-    public IReadOnlyList<BacklogItem> ListMissingData() =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListMissingData)}.");
+    public IReadOnlyList<BacklogItem> ListMissingData() => ListByState(TicketState.MissingData);
 
-    public IReadOnlyList<BacklogItem> ListInReview() =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListInReview)}.");
+    public IReadOnlyList<BacklogItem> ListInReview() => ListByState(TicketState.InReview);
 
-    public IReadOnlyList<BacklogItem> ListDone() =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListDone)}.");
+    public IReadOnlyList<BacklogItem> ListDone() => ListByState(TicketState.Done);
 
     public IReadOnlyList<BacklogItem> ListFailed() =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(ListFailed)}.");
+        ListFailedFailure is { } error ? throw new BacklogException(error) : ListByState(TicketState.Failed);
 
     public BacklogItem? GetItem(int number) =>
         GetItemFailure is { } error ? throw new BacklogException(error) : Get(number);
 
-    public void Requeue(int number) =>
-        throw new NotSupportedException($"{nameof(InMemoryBacklog)} no soporta {nameof(Requeue)}.");
+    public void Requeue(int number) => ApplyState(number, RequeueFailure, TicketState.Unrefined);
 
     public void Close(int number) => ApplyState(number, CloseFailure, TicketState.Done);
 
@@ -70,6 +65,9 @@ internal sealed class InMemoryBacklog : IBacklog
         if (items.TryGetValue(number, out var item))
             items[number] = item with { Comments = [.. item.Comments, body] };
     }
+
+    private IReadOnlyList<BacklogItem> ListByState(TicketState state) =>
+        items.Values.Where(i => i.State == state).OrderBy(i => i.Number).ToArray();
 
     private void ApplyState(int number, ApplicationError? failure, TicketState state)
     {
