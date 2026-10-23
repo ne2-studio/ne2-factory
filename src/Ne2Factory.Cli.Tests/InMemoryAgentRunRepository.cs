@@ -30,5 +30,5 @@ internal sealed class InMemoryAgentRunRepository : IAgentRunRepository
     }
 
     public IReadOnlyList<AgentRun> ListRecent(int limit) =>
-        throw new NotSupportedException($"{nameof(InMemoryAgentRunRepository)} no soporta {nameof(ListRecent)}.");
+        runs.Values.OrderByDescending(r => r.QueuedAt).Take(limit).ToArray();
 }

@@ -1,18 +1,9 @@
-using Hangfire;
 using Microsoft.Extensions.Logging;
-using Ne2Factory.Cli.Services;
 
 namespace Ne2Factory.Cli.GapScout;
 
-internal sealed class GapScoutCommand(
-    IGitHub gitHub,
-    ProjectContext ctx,
-    IBackgroundJobClient backgroundJobs,
-    JobStorage jobStorage,
-    ILogger<GapScoutCommand> logger)
+internal sealed class GapScoutCommand(GapScoutScans scans, ILogger<GapScoutCommand> logger)
 {
-    private const string Label = "gap-scout";
-
     private const string Usage = """
         Usage: ne2-factory gap-scout <command>   (from the root of the repo being worked on)
 
@@ -87,7 +78,7 @@ internal sealed class GapScoutCommand(
     private int CmdScan(string[] args)
     {
         var target = args.Length > 0 ? args[0] : "";
-        var usage = $"Uso: ne2-factory gap-scout scan <scope|all> [--yolo]  (scopes: {string.Join(' ', ctx.GapScoutScopes)})";
+        var usage = $"Uso: ne2-factory gap-scout scan <scope|all> [--yolo]  (scopes: {string.Join(' ', scans.Scopes)})";
 
         var yolo = false;
         switch (args.Length > 1 ? args[1] : "")
@@ -99,42 +90,22 @@ internal sealed class GapScoutCommand(
                 return 1;
         }
 
-        string[] scopes;
-        if (target == "all")
-        {
-            scopes = ctx.GapScoutScopes;
-        }
-        else if (target.Length > 0 && ctx.GapScoutScopes.Contains(target))
-        {
-            scopes = [target];
-        }
-        else
+        var queued = scans.Enqueue(target, yolo);
+        if (queued.IsFailure)
         {
             logger.LogError("{Usage}", usage);
             return 1;
         }
 
-        if (!gitHub.TryCreateLabel(Label, "5319E7", "Architecture initiative proposed by gap-scout, pending approval", out var error) && error is not null)
-            logger.LogWarning("aviso: no se pudo crear la label '{Label}': {Error}", Label, error);
-
-        var monitoring = jobStorage.GetMonitoringApi();
-        foreach (var scope in scopes)
+        foreach (var scan in queued.Value)
         {
-            var normalizedScope = scope.TrimEnd('/') + "/";
-            if (IsAlreadyQueued(monitoring, normalizedScope))
-            {
-                logger.LogWarning("aviso: ya hay un scan encolado o en curso para el scope '{Scope}'; lo salto.", normalizedScope);
-                continue;
-            }
-
-            var jobId = backgroundJobs.Enqueue<GapScoutJobs>(job => job.RunScan(normalizedScope, yolo));
-            Console.WriteLine($"Encolado: {jobId} (scope: {normalizedScope})");
+            if (scan.JobId is null)
+                logger.LogWarning("aviso: ya hay un scan encolado o en curso para el scope '{Scope}'; lo salto.", scan.Scope);
+            else
+                Console.WriteLine($"Encolado: {scan.JobId} (scope: {scan.Scope})");
         }
 
-        Console.WriteLine("El job server vive dentro de 'ne2-factory run'; sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
+        Console.WriteLine("El job server vive dentro del worker ('ne2-factory run', o arrancado desde 'ne2-factory ui'); sin él corriendo, estos jobs quedan pendientes hasta que se levante.");
         return 0;
     }
-
-    private static bool IsAlreadyQueued(Hangfire.Storage.IMonitoringApi monitoring, string scope) =>
-        monitoring.HasJob(job => job.Type == typeof(GapScoutJobs) && job.Args.Count > 0 && (job.Args[0] as string) == scope);
 }

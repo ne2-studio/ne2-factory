@@ -138,3 +138,21 @@ Both read `.ne2-factory.env` for their config. Tickets are queued by filing a Gi
 issue with the `backlog` label directly, not through this tool. See
 [`docs/backlog/README.md`](docs/backlog/README.md) for the full workflow (refining,
 running unattended, approving gap-scout findings).
+
+### Control panel
+
+Everything above is also available from a web control panel, which adds starting and
+stopping the worker without a terminal and following its log live:
+
+```bash
+dotnet run --project ~/.claude/plugins/marketplaces/ne2/src/Ne2Factory.Cli -c Release -- ui
+```
+
+Then open <http://localhost:5180> (`--port <n>` to change it; reachable from this machine
+only). The worker starts stopped, and refuses to start while another one is alive for
+the same repo (e.g. `ne2-factory run` in a terminal). See `ne2-factory ui --help`.
+
+The panel is a plain static page (`src/Ne2Factory.Cli/ControlPanel/wwwroot`, ES modules,
+no build step) over a JSON API under `/api`. A new area is one view module registered in
+`wwwroot/app.js` plus its endpoints in `ControlPanel/Endpoints`, mapped in
+`ControlPanelApp`.

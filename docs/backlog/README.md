@@ -61,6 +61,10 @@ on.
   new ones as GitHub issues (label `gap-scout`) pending approval. See
   [`gap-scout.md`](gap-scout.md) for how to schedule it and how approval works.
 
+* `ne2-factory ui` — web control panel over all of the above: start/stop the worker and
+  follow its log, the backlog lists with requeue, recent runs, and queueing gap-scout scans.
+  See `ne2-factory ui --help`.
+
 "The reviewer" is the person named in the consuming repo's `.ne2-factory/project.md`.
 
 ## Approval flow
