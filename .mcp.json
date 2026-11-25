@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "youtrack-ne2": {
+      "type": "http",
+      "url": "https://ne2.youtrack.cloud/mcp"
+    }
+  }
+}
